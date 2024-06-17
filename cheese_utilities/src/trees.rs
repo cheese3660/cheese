@@ -3,7 +3,8 @@
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::fmt::{Display, Formatter};
-use ariadne::{Color,Fmt};
+use std::ops::Bound;
+use ariadne::{Color, Fmt};
 use crate::trees::DisplayNodeData::{Dictionary, Inline, List, Terminal};
 
 
@@ -16,36 +17,35 @@ pub struct DisplayNode {
 #[derive(Debug, Clone)]
 pub struct DisplayNodeName {
     name: String,
-    color: Color
+    color: Color,
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub enum DisplayNodeData {
     Terminal,
     Inline(Box<DisplayNode>),
     List(Vec<Box<DisplayNode>>),
-    Dictionary(Vec<(String,Box<DisplayNode>)>)
+    Dictionary(Vec<(String, Box<DisplayNode>)>),
 }
-
 
 
 // Now we need to make a node builder
 pub struct NodeBuilder {
-    node: DisplayNode
+    node: DisplayNode,
 }
 
 
 impl NodeBuilder {
     pub fn new<T: ToString>(name: T, color: Color) -> Self {
         NodeBuilder {
-            node: DisplayNode{
+            node: DisplayNode {
                 name: Some(
                     DisplayNodeName {
                         name: name.to_string(),
-                        color
+                        color,
                     }
                 ),
-                data: Terminal
+                data: Terminal,
             }
         }
     }
@@ -56,95 +56,103 @@ impl NodeBuilder {
         }
     }
 
-    pub fn add_inline(&mut self, value: Box<DisplayNode>) -> &Self {
+    pub fn add_inline(&mut self, value: Box<DisplayNode>) -> &mut Self {
         self.node.data = Inline(value);
         self
     }
 
-    pub fn make_inline<T: ToString>(&mut self,value: T, color: Color) -> &Self {
+    pub fn make_inline<T: ToString>(&mut self, value: T, color: Color) -> &mut Self {
         let sub_value = Self::new(value, color).build();
         self.add_inline(sub_value)
     }
 
-    pub fn convert_inline<T: DisplayableTree>(&mut self, value: T) -> &Self {
+    pub fn convert_inline<T: DisplayableTree>(&mut self, value: T) -> &mut Self {
         self.add_inline(value.to_node())
     }
 
-    pub fn add_child(&mut self, value: Box<DisplayNode>) -> &Self {
+    pub fn add_child(&mut self, value: Box<DisplayNode>) -> &mut Self {
         match &mut self.node.data {
-            _ => {
-                self.node.data = List(vec![value]);
-                self
-            },
             List(vec) => {
                 vec.push(value);
                 self
-            },
-        }
-    }
-
-    pub fn make_child<T: ToString>(&mut self, value: T, color: Color) -> &Self {
-        let sub_value = Self::new(value, color).build();
-        self.add_child(sub_value)
-    }
-
-    pub fn convert_child<T: DisplayableTree>(&mut self, value: T) -> &Self {
-        self.add_child(value.to_node())
-    }
-
-    pub fn add_children<T>(&mut self, value: T) -> &Self
-    where
-        T: Iterator<Item: DisplayableTree>
-    {
-        for node in value {
-            self.convert_child(node)
-        }
-        self
-    }
-
-    pub fn add_field<T: ToString>(&mut self, field_name: T, value: Box<DisplayNode>) -> &Self {
-        match &mut self.node.data {
+            }
             _ => {
-                let mut map = BTreeMap::new();
-                map.push((field_name.to_string(),value));
-                self.node.data = Dictionary(map);
-                Ok(())
-            },
-            Dictionary(map) => {
-                map.push((field_name.to_string(),value));
-                Ok(())
+                self.node.data = List(vec![value]);
+                self
             }
         }
     }
 
-    pub fn make_field<T1: ToString, T2: ToString>(&mut self, field_name: T1, value: T2, color: Color) -> &Self {
+    pub fn make_child<T: ToString>(&mut self, value: T, color: Color) -> &mut Self {
+        let sub_value = Self::new(value, color).build();
+        self.add_child(sub_value)
+    }
+
+    pub fn convert_child<T: DisplayableTree>(&mut self, value: T) -> &mut Self {
+        self.add_child(value.to_node())
+    }
+
+    pub fn add_children<T: Iterator>(&mut self, value: T) -> &mut Self
+        where
+            <T as Iterator>::Item: DisplayableTree
+    {
+        self.node.data = List(vec![]);
+        for node in value {
+            self.convert_child(node);
+        }
+        self
+    }
+
+    pub fn add_field<T: ToString>(&mut self, field_name: T, value: Box<DisplayNode>) -> &mut Self {
+        match &mut self.node.data {
+            Dictionary(map) => {
+                map.push((field_name.to_string(), value));
+            }
+            _ => {
+                let mut map = vec![];
+                map.push((field_name.to_string(), value));
+                self.node.data = Dictionary(map);
+            }
+        }
+        self
+    }
+
+    pub fn make_field<T1: ToString, T2: ToString>(&mut self, field_name: T1, value: T2, color: Color) -> &mut Self {
         let sub_value = Self::new(value, color).build();
         self.add_field(field_name, sub_value)
     }
 
-    pub fn convert_field<T1: ToString, T2: DisplayableTree>(&mut self, field_name: T1, value: T2) -> &Self {
-        self.add_field(field_name,value.to_node())
+    pub fn convert_field<T1: ToString, T2: DisplayableTree>(&mut self, field_name: T1, value: T2) -> &mut Self {
+        self.add_field(field_name, value.to_node())
     }
 
-    pub fn list_field<T1: ToString, T2>(&mut self, field_name: T1, value: T2) -> &Self
+    pub fn list_field<T1: ToString, T2: Iterator>(&mut self, field_name: T1, value: T2) -> &mut Self
         where
-            T2: Iterator<Item: DisplayableTree>
+            <T2 as Iterator>::Item: DisplayableTree
     {
-        self.add_field(field_name,Self::new_unnamed_list(value))
+        self.add_field(field_name, Self::new_unnamed_list(value))
     }
 
     pub fn new_terminal<T: ToString>(name: T, color: Color) -> Box<DisplayNode> {
-        Self::new(name,color).build()
+        Self::new(name, color).build()
     }
 
-    pub fn new_unnamed_list<T>(list: T) -> Box<DisplayNode>
+    pub fn new_unnamed_list<T: Iterator>(list: T) -> Box<DisplayNode>
         where
-            T: Iterator<Item: DisplayableTree>
+            <T as Iterator>::Item: DisplayableTree
     {
         Self::new_unnamed().add_children(list).build()
     }
     pub fn new_binary<T: ToString, C1: DisplayableTree, C2: DisplayableTree>(name: T, color: Color, a: C1, b: C2) -> Box<DisplayNode> {
-        Self::new(name,color).convert_child(a).convert_child(b).build()
+        let mut builder = Self::new(name, color);
+        builder.convert_child(a);
+        builder.convert_child(b);
+        builder.build()
+    }
+
+    pub fn ensure_dictionary(&mut self) -> &mut Self {
+        self.node.data = Dictionary(vec![]);
+        self
     }
 
     pub fn build(&self) -> Box<DisplayNode> {
@@ -156,7 +164,7 @@ impl Default for DisplayNode {
     fn default() -> Self {
         DisplayNode {
             name: None,
-            data: Terminal
+            data: Terminal,
         }
     }
 }
@@ -171,13 +179,28 @@ impl DisplayableTree for DisplayNode {
     }
 }
 
+impl<T> DisplayableTree for &T
+    where T: DisplayableTree
+{
+    fn to_node(&self) -> Box<DisplayNode> {
+        T::to_node(self)
+    }
+}
+
+impl<T> DisplayableTree for Box<T>
+    where T: DisplayableTree
+{
+    fn to_node(&self) -> Box<DisplayNode> {
+        T::to_node(self)
+    }
+}
 
 
 // Now time to implement the display functions for display nodes, given the simplified set this should all be a lot simpler for us to do, and then make modifications to as well
-type PipesList = Vec<(usize,bool)>;
+type PipesList = Vec<(usize, bool)>;
 
 fn write_pipes(f: &mut Formatter<'_>, pipes: &PipesList) -> std::fmt::Result {
-    for (space,active) in pipes {
+    for (space, active) in pipes {
         if *active {
             write!(f, "│   ")?;
         } else {
@@ -199,12 +222,13 @@ fn write_end(f: &mut Formatter<'_>) -> std::fmt::Result {
 }
 
 fn write_split_continued(f: &mut Formatter<'_>) -> fmt::Result {
-    write!(f,"├───╮")
+    write!(f, "├───╮")
 }
 
 fn write_end_continued(f: &mut Formatter<'_>) -> fmt::Result {
-    write!(f,"╰───╮")
+    write!(f, "╰───╮")
 }
+
 fn write_begin(f: &mut Formatter<'_>) -> std::fmt::Result {
     // writeln!(f, "╿")
     write_empty(f)
@@ -216,98 +240,320 @@ fn write_empty(f: &mut Formatter<'_>) -> std::fmt::Result {
 
 fn with_empty(pipes: &PipesList) -> PipesList {
     let mut copy = pipes.clone();
-    copy.push((0,false));
+    copy.push((0, false));
     copy
 }
 
-fn with_empty_count(pipes: &PipesList,count: usize) -> PipesList {
+fn with_empty_count(pipes: &PipesList, count: usize) -> PipesList {
     let mut copy = pipes.clone();
-    copy.push((count,false));
+    copy.push((count, false));
     copy
 }
 
 fn with_pipe(pipes: &PipesList) -> PipesList {
     let mut copy = pipes.clone();
-    copy.push((0,true));
+    copy.push((0, true));
     copy
 }
 
-fn with_pipe_count(pipes: &PipesList,count: usize) -> PipesList {
+fn with_pipe_count(pipes: &PipesList, count: usize) -> PipesList {
     let mut copy = pipes.clone();
-    copy.push((count,true));
+    copy.push((count, true));
     copy
 }
+
 impl Display for DisplayNode {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        todo!()
+        for line in self.generate_bounded_lines(None).0 {
+            writeln!(f, "{line}")?;
+        }
+        Ok(())
+//        let vec = vec![];
+//        self.display_depth(f,&vec)
     }
 }
 
-impl DisplayNode {
-    fn display_depth(&self, f: &mut Formatter<'_>, pipes: &PipesList) -> std::fmt::Result {
-        // Write the name of the node
-        let name_length = match &self.name {
-            None => {
-                if let Inline(_) = self.data {
+struct BoundedLine {
+    line: String,
+    begin: usize,
+    end: usize,
+    color_spans: Vec<(usize, usize, Color)>,
+}
 
+impl Display for BoundedLine {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mut span_iter = self.color_spans.iter();
+        let mut current_span = span_iter.next();
+        for (i, c) in self.line.chars().enumerate() {
+            match current_span {
+                None => write!(f, "{}", c)?,
+                Some((begin, end, color)) => if i >= *begin && i < *end {
+                    write!(f, "{}", c.fg(*color))?;
+                } else if i >= *end {
+                    write!(f, "{}", c)?;
+                    current_span = span_iter.next()
                 } else {
-                    writeln!(f)?
+                    write!(f, "{}", c)?
                 }
-                0
-            },
-            Some(dnn) => {
-                if let Inline(_) = self.data {
-                    write!(f,"{}: ",dnn.fg(dnn.color))?
-                } else
-                {
-                    writeln!(f, "{}", dnn.fg(dnn.color))?
-                }
-                dnn.name.chars().count()
-            }
-        };
-        match &self.data {
-            Terminal => Ok(()),
-            Inline(node) => {
-                let mut clone = pipes.clone();
-                clone.last_mut().unwrap().0 += name_length+2;
-                node.display_depth(f,&clone)
-            }
-            List(nodes) => if nodes.len() > 0 {
-                let full = with_pipe(&pipes);
-                let empty = with_empty(&pipes);
-                for (i, node) in nodes.iter().enumerate() {
-                    write_pipes(f,pipes)?;
-                    (if i == 0 {write_begin} else {write_empty})(f)?;
-                    write_pipes(f,pipes)?;
-                    (if i == nodes.len()-1 {if let None = node.name {write_end_continued} else {write_end}} else {if let None = node.name {write_split_continued} else {write_split}})(f)?;
-                    node.display_depth(f, if i == nodes.len()-1 { &empty } else { &full })?;
-                }
-                Ok(())
-            } else {
-                write_pipes(f, pipes)?;
-                write_begin(f)?;
-                write_pipes(f,pipes)?;
-                write_split(f)?;
-                writeln!(f, "{}", "<empty>".fg(Color::BrightBlack))
-            },
-            Dictionary(nodes) => if nodes.len() > 0 {
-                for (i, (name, node)) in nodes.iter().enumerate() {
-                    write_pipes(f,pipes)?;
-                    (if i == 0 {write_begin} else {write_empty})(f)?;
-                    write_pipes(f,pipes)?;
-                    (if i == nodes.len()-1 {write_end} else {write_split})(f)?;
-                    write!(f, "{name}{}", if let None = node.name { "" } else {": "})?;
-                    let p2 = (if i == nodes.len()-1 {with_empty_count} else {with_pipe_count})(pipes,if let None = node.name { 0} else {name.chars().count()+2 });
-                    node.display_depth(f, &p2)?;
-                }
-                Ok(())
-            } else {
-                write_pipes(f, pipes)?;
-                write_begin(f)?;
-                write_pipes(f,pipes)?;
-                write_split(f)?;
-                writeln!(f, "{}", "<empty>".fg(Color::BrightBlack))
             }
         }
+        Ok(())
+    }
+}
+
+fn count_whitespace_chars_at_start(input: &str) -> usize {
+    input
+        .chars()
+        .take_while(|ch| ch.is_whitespace())
+        .count()
+}
+
+impl BoundedLine {
+    fn new<T: ToString>(value: T) -> Self {
+        let binding = value.to_string();
+        let line = binding.trim_end();
+        let begin = count_whitespace_chars_at_start(line);
+        let end = line.chars().count();
+        BoundedLine {
+            line: line.to_string(),
+            begin,
+            end,
+            color_spans: vec![],
+        }
+    }
+
+    fn set_color(&mut self, c: Color) {
+        self.color_spans.push((self.begin, self.end, c))
+    }
+
+    fn with_prefix<T: ToString>(&self, prefix: T) -> Self {
+        let s = prefix.to_string();
+        let chars = s.chars().count();
+        let mut result = Self::new(s + self.line.as_str());
+        for (begin, end, color) in &self.color_spans {
+            result.color_spans.push((begin + chars, end + chars, *color));
+        }
+        result
+    }
+
+    fn collides_with(&self, other: &BoundedLine) -> bool {
+        self.end + 1 >= other.begin
+    }
+
+    fn combine(&mut self, other: BoundedLine) {
+        self.begin = other.begin;
+        self.line = other.line + self.line.chars().skip(other.end).collect::<String>().as_str();
+        for span in other.color_spans.iter().rev() {
+            self.color_spans.insert(0, *span)
+        }
+    }
+}
+
+fn shift_lines(lines: &mut Vec<BoundedLine>, prefix: String) {
+    if lines.len() == 0 {
+        lines.push(BoundedLine::new(prefix))
+    } else {
+        let spaces: String = prefix.chars().map(|_| ' ').collect();
+        let mut i = 0;
+        while i < lines.len() {
+            if i == 0 {
+                lines[i] = lines[i].with_prefix(prefix.as_str());
+            } else {
+                lines[i] = lines[i].with_prefix(spaces.as_str());
+            }
+            i += 1;
+        }
+    }
+}
+
+// Returns true if they collide
+fn check_collision(a: &Vec<BoundedLine>, b: &Vec<BoundedLine>, offset: usize) -> bool {
+    let mut i = 0;
+    while i < b.len() {
+        let j = i + offset;
+        if j >= a.len() {
+            break;
+        }
+        if b[i].collides_with(&a[j]) {
+            return true;
+        }
+
+        i += 1;
+    }
+    false
+}
+
+
+fn combine_at(lines: &mut Vec<BoundedLine>, combination: Vec<BoundedLine>, offset: usize) {
+    let mut i = offset;
+    for line in combination {
+        if i < lines.len() {
+            lines[i].combine(line)
+        } else {
+            while i > lines.len() {
+                lines.push(BoundedLine::new(""));
+            }
+            lines.push(line);
+        }
+        i += 1;
+    }
+}
+
+// This returns the line number that the new set starts at now
+fn combine_lines(lines: &mut Vec<BoundedLine>, mut combination: Vec<BoundedLine>, last_start: usize) -> usize {
+    if lines.len() == 0 {
+        lines.append(&mut combination);
+        return 0;
+    }
+
+    let mut start_loc = lines.len() + 2;
+    let end_loc = loop {
+        if start_loc <= last_start + 2 {
+            break last_start + 2;
+        }
+        let collision_check = check_collision(lines, &combination, start_loc - 2);
+        if collision_check {
+            break start_loc;
+        }
+        start_loc -= 1;
+    };
+    //let end_loc = start_loc;
+    combine_at(lines, combination, end_loc);
+    end_loc
+}
+
+fn print_lines(lines: &Vec<BoundedLine>) {
+    for line in lines {}
+}
+
+impl DisplayNode {
+    fn generate_bounded_lines(&self, dictionary_name: Option<String>) -> (Vec<BoundedLine>, bool) {
+        #[derive(Debug)]
+        enum PrefixType {
+            Split(bool),
+            End(bool),
+        }
+
+        let mut lines = match &self.data {
+            Terminal => vec![],
+            Inline(value) => value.generate_bounded_lines(None).0,
+            List(values) => {
+                let mut lines = vec![];
+                let mut prefix_locations = HashMap::new();
+                let mut last_start = 0;
+                for (i, value) in values.iter().enumerate() {
+                    let (new_lines, nameless) = value.generate_bounded_lines(None);
+                    last_start = combine_lines(&mut lines, new_lines, 0);
+                    prefix_locations.insert(last_start, if i == values.len() - 1 {
+                        PrefixType::End(nameless)
+                    } else {
+                        PrefixType::Split(nameless)
+                    });
+                }
+                if values.len() == 0 {
+                    let mut empty_marker = BoundedLine::new("<empty>");
+                    empty_marker.set_color(Color::BrightBlack);
+                    lines = vec![empty_marker];
+                    prefix_locations.insert(0, PrefixType::End(false));
+                }
+                let mut location = 0;
+                let mut past_end = false;
+                while location < lines.len() {
+                    lines[location] = match prefix_locations.get(&location) {
+                        None => if past_end {
+                            lines[location].with_prefix("    ")
+                        } else {
+                            lines[location].with_prefix("│   ")
+                        }
+                        Some(prefix) => lines[location].with_prefix(match prefix {
+                            PrefixType::Split(true) => "├───",
+                            PrefixType::Split(false) => "├─⇥ ",
+                            PrefixType::End(true) => {
+                                past_end = true;
+                                "╰───"
+                            }
+                            PrefixType::End(false) => {
+                                past_end = true;
+                                "╰─⇥ "
+                            }
+                        })
+                    };
+                    location += 1;
+                }
+                lines.insert(0, BoundedLine::new("│"));
+                lines
+            }
+            Dictionary(values) => {
+                let mut lines = vec![];
+                let mut prefix_locations = HashMap::new();
+                let mut last_start = 0;
+                for (i, (name, value)) in values.iter().enumerate() {
+                    let (mut new_lines, nameless) = value.generate_bounded_lines(Some(name.clone()));
+                    if value.name.is_some() {
+                        shift_lines(&mut new_lines, name.to_string() + ": ");
+                    }
+                    // for line in &new_lines {
+                    //     
+                    // }
+
+
+                    last_start = combine_lines(&mut lines, new_lines, last_start);
+                    prefix_locations.insert(last_start, if i == values.len() - 1 {
+                        PrefixType::End(nameless)
+                    } else {
+                        PrefixType::Split(nameless)
+                    });
+                }
+
+                if values.len() == 0 {
+                    let mut empty_marker = BoundedLine::new("<empty>");
+                    empty_marker.set_color(Color::BrightBlack);
+                    lines = vec![empty_marker];
+                    prefix_locations.insert(0, PrefixType::End(false));
+                }
+                let mut location = 0;
+                let mut past_end = false;
+                while location < lines.len() {
+                    lines[location] = match prefix_locations.get(&location) {
+                        None => if past_end {
+                            lines[location].with_prefix("    ")
+                        } else {
+                            lines[location].with_prefix("│   ")
+                        },
+                        Some(ty) => lines[location].with_prefix(match ty {
+                            PrefixType::Split(_) => "├─⇥ ",
+                            PrefixType::End(_) => {
+                                past_end = true;
+                                "╰─⇥ "
+                            }
+                        })
+                    };
+                    location += 1;
+                }
+                lines.insert(0, BoundedLine::new("│"));
+                lines
+            }
+        };
+        if let Inline(_) = self.data {
+            let n = self.name.clone().unwrap();
+            let name = n.name;
+            let length = name.chars().count();
+            shift_lines(&mut lines, name + ": ");
+            lines[0].color_spans.insert(0, (0, length, n.color));
+        } else {
+            let name_bound = match &self.name {
+                None => match dictionary_name {
+                    None => BoundedLine::new("╮"),
+                    Some(dict_name) => BoundedLine::new(dict_name),
+                }
+                Some(name) => {
+                    let mut line = BoundedLine::new(&name.name);
+                    line.set_color(name.color);
+                    line
+                }
+            };
+            lines.insert(0, name_bound);
+        }
+        (lines, self.name.is_none())
     }
 }

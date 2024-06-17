@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Display, Formatter, Pointer};
 use std::fs::canonicalize;
 use ariadne::{Color, Fmt};
 use bitflags::bitflags;
@@ -30,39 +30,39 @@ bitflags! {
 impl Display for DeclarationFlags {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.0.0 == 0 {
-            return write!(f, "{}", "none".fg(Color::Blue))
+            return write!(f, "none")
         }
         let mut prefix = "";
         if self.contains(Self::inline) {
-            write!(f, "{}{}", prefix, "inline".fg(Color::Blue))?;
+            write!(f, "{}inline", prefix)?;
             prefix = " ";
         }
         if self.contains(Self::external) {
-            write!(f, "{}{}", prefix, "external".fg(Color::Blue))?;
+            write!(f, "{}external", prefix)?;
             prefix = " ";
         }
         if self.contains(Self::export) {
-            write!(f, "{}{}", prefix, "export".fg(Color::Blue))?;
+            write!(f, "{}export", prefix)?;
             prefix = " ";
         }
         if self.contains(Self::comptime) {
-            write!(f, "{}{}", prefix, "comptime".fg(Color::Blue))?;
+            write!(f, "{}comptime", prefix, )?;
             prefix = " ";
         }
         if self.contains(Self::public) {
-            write!(f, "{}{}", prefix, "public".fg(Color::Blue))?;
+            write!(f, "{}public", prefix)?;
             prefix = " ";
         }
         if self.contains(Self::private) {
-            write!(f, "{}{}", prefix, "private".fg(Color::Blue))?;
+            write!(f, "{}private", prefix)?;
             prefix = " ";
         }
         if self.contains(Self::mutable) {
-            write!(f, "{}{}", prefix, "mutable".fg(Color::Blue))?;
+            write!(f, "{}mutable", prefix)?;
             prefix = " ";
         }
         if self.contains(Self::entry) {
-            write!(f, "{}{}", prefix, "entry".fg(Color::Blue))?;
+            write!(f, "{}entry", prefix)?;
             prefix = " ";
         }
         Ok(())
@@ -79,8 +79,8 @@ impl AstNode {
 }
 impl Display for AstNode {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let pipes = vec![];
-        self.data.display_depth(f, &pipes)
+        let tree = self.to_node();
+        std::fmt::Display::fmt(&tree, f)
     }
 }
 #[derive(strum_macros::Display)]
@@ -606,137 +606,6 @@ pub enum AstNodeData {
     }
 }
 
-
-fn write_pipes(f: &mut Formatter<'_>, pipes: &PipesList) -> std::fmt::Result {
-    for (space,active) in pipes {
-        if *active {
-            write!(f, "│   ")?;
-        } else {
-            write!(f, "    ")?;
-        }
-        for i in 0..*space {
-            write!(f, " ")?;
-        }
-    }
-    Ok(())
-}
-
-fn write_split(f: &mut Formatter<'_>) -> std::fmt::Result {
-    write!(f, "├─⇥ ")
-}
-
-fn write_end(f: &mut Formatter<'_>) -> std::fmt::Result {
-    write!(f, "╰─⇥ ")
-}
-
-fn write_begin(f: &mut Formatter<'_>) -> std::fmt::Result {
-    writeln!(f, "╿")
-}
-
-fn write_empty(f: &mut Formatter<'_>) -> std::fmt::Result {
-    writeln!(f, "│")
-}
-
-fn with_empty(pipes: &PipesList) -> PipesList {
-    let mut copy = pipes.clone();
-    copy.push((0,false));
-    copy
-}
-
-fn with_empty_count(pipes: &PipesList,count: usize) -> PipesList {
-    let mut copy = pipes.clone();
-    copy.push((count,false));
-    copy
-}
-
-fn with_pipe(pipes: &PipesList) -> PipesList {
-    let mut copy = pipes.clone();
-    copy.push((0,true));
-    copy
-}
-
-fn with_pipe_count(pipes: &PipesList,count: usize) -> PipesList {
-    let mut copy = pipes.clone();
-    copy.push((count,true));
-    copy
-}
-
-fn write_list(f: &mut Formatter<'_>, pipes: &PipesList, list: &NodeList) -> std::fmt::Result {
-    if list.len() > 0 {
-        write_pipes(f, pipes)?;
-        write_begin(f)?;
-        let full = with_pipe(pipes);
-        let empty = with_empty(pipes);
-        let mut count = 0;
-        for node in list {
-            write_pipes(f, pipes)?;
-            count += 1;
-            if count == list.len() {
-                write_end(f)?;
-                node.data.display_depth(f, &empty)?;
-            } else {
-                write_split(f)?;
-                node.data.display_depth(f, &full)?;
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-            }
-        }
-    }
-    Ok(())
-}
-
-fn write_dict(f: &mut Formatter<'_>, pipes: &PipesList, dict: &NodeDict) -> std::fmt::Result {
-    if dict.len() > 0 {
-        write_pipes(f, pipes)?;
-        write_begin(f)?;
-        let mut count = 0;
-        for node in dict {
-            write_pipes(f, pipes)?;
-            count += 1;
-            if count == dict.len() {
-                let empty = with_empty_count(pipes,node.0.len());
-                write_end(f)?;
-                write!(f, "{}: ", node.0)?;
-                node.1.data.display_depth(f, &empty)?;
-            } else {
-                let full = with_pipe_count(pipes,node.0.len());
-                write_split(f)?;
-                node.1.data.display_depth(f, &full)?;
-                write!(f, "{}: ", node.0)?;
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-            }
-        }
-    }
-    Ok(())
-}
-
-fn write_unary(f: &mut Formatter, name: String, value: &NodePtr, pipes: &PipesList) -> std::fmt::Result {
-    writeln!(f, "{}", name)?;
-    write_pipes(f, pipes)?;
-    write_begin(f)?;
-    write_pipes(f, pipes)?;
-    write_end(f)?;
-    let empty = with_empty(pipes);
-    value.data.display_depth(f, &empty)
-}
-
-fn write_binary(f: &mut Formatter, name: String, a: &NodePtr, b: &NodePtr, pipes: &PipesList) -> std::fmt::Result {
-    writeln!(f, "{}", name)?;
-    write_pipes(f, pipes)?;
-    write_begin(f)?;
-    write_pipes(f, pipes)?;
-    write_split(f)?;
-    let full = with_pipe(pipes);
-    a.data.display_depth(f, &full)?;
-    let empty = with_pipe(pipes);
-    write_pipes(f, pipes)?;
-    write_empty(f)?;
-    write_pipes(f, pipes)?;
-    write_end(f)?;
-    b.data.display_depth(f, &empty)
-}
-
 impl DisplayableTree for AstNode {
     fn to_node(&self) -> Box<DisplayNode> {
         self.data.to_node()
@@ -749,6 +618,8 @@ const NAME_COLOR: Color = Color::Cyan;
 const KEYWORD_COLOR: Color = Color::Blue;
 const METHOD_COLOR: Color = Color::BrightYellow;
 const OTHER_COLOR: Color = Color::Green;
+
+
 
 impl DisplayableTree for AstNodeData {
     fn to_node(&self) -> Box<DisplayNode> {
@@ -792,16 +663,16 @@ impl DisplayableTree for AstNodeData {
             AstNodeData::ImaginaryLiteral(i) => NodeBuilder::new_terminal(format!("{i}I"),VALUE_COLOR),
             AstNodeData::IntegerLiteral(i) => NodeBuilder::new_terminal(i,VALUE_COLOR),
             AstNodeData::NameReference(name) => NodeBuilder::new_terminal(name,NAME_COLOR),
-            AstNodeData::UnnamedBlock(children) => NodeBuilder::new("unnamed block",KEYWORD_COLOR).add_children(children).build(),
-            AstNodeData::TupleLiteral(children) => NodeBuilder::new("tuple literal",OTHER_COLOR).add_children(children).build(),
-            AstNodeData::ArrayLiteral(children) => NodeBuilder::new("array literal",OTHER_COLOR).add_children(children).build(),
+            AstNodeData::UnnamedBlock(children) => NodeBuilder::new("unnamed block",KEYWORD_COLOR).add_children(children.iter()).build(),
+            AstNodeData::TupleLiteral(children) => NodeBuilder::new("tuple literal",OTHER_COLOR).add_children(children.iter()).build(),
+            AstNodeData::ArrayLiteral(children) => NodeBuilder::new("array literal",OTHER_COLOR).add_children(children.iter()).build(),
             AstNodeData::EnumLiteral(name) => NodeBuilder::new("enum literal",OTHER_COLOR).make_inline(name, NAME_COLOR).build(),
             AstNodeData::BuiltinReference(name) => NodeBuilder::new("builtin reference",OTHER_COLOR).make_inline(name, METHOD_COLOR).build(),
             AstNodeData::CopyCapture(name) => NodeBuilder::new("copy capture",OTHER_COLOR).make_inline(name, NAME_COLOR).build(),
             AstNodeData::ReferenceCapture(name) => NodeBuilder::new("reference capture",OTHER_COLOR).make_inline(name, NAME_COLOR).build(),
             AstNodeData::ConstantReferenceCapture(name) => NodeBuilder::new("constant reference capture",OTHER_COLOR).make_inline(name, NAME_COLOR).build(),
-            AstNodeData::ObjectLiteral(children) => NodeBuilder::new("object block",OTHER_COLOR).add_children(children).build(),
-            AstNodeData::Block(children) => NodeBuilder::new("block",KEYWORD_COLOR).add_children(children).build(),
+            AstNodeData::ObjectLiteral(children) => NodeBuilder::new("object block",OTHER_COLOR).add_children(children.iter()).build(),
+            AstNodeData::Block(children) => NodeBuilder::new("block",KEYWORD_COLOR).add_children(children.iter()).build(),
             AstNodeData::Break(child) => NodeBuilder::new("break",KEYWORD_COLOR).convert_child(child).build(),
             AstNodeData::Return(child) => NodeBuilder::new("return",KEYWORD_COLOR).convert_child(child).build(),
             AstNodeData::Yield(child) => NodeBuilder::new("yield",KEYWORD_COLOR).convert_child(child).build(),
@@ -816,23 +687,23 @@ impl DisplayableTree for AstNodeData {
             AstNodeData::MapTransformation(child) => NodeBuilder::new("|",KEYWORD_COLOR).convert_child(child).build(),
             AstNodeData::Comptime(child) => NodeBuilder::new("comptime",KEYWORD_COLOR).convert_child(child).build(),
             AstNodeData::ImplicitResult(child) => NodeBuilder::new("implicit",OTHER_COLOR).convert_child(child).build(),
-            AstNodeData::ImplicitArray { constant, subtype } => NodeBuilder::new(if constant { "implicit constant array type" } else {"implicit array type"},TYPE_COLOR).convert_child(subtype).build(),
-            AstNodeData::Slice { constant, subtype } => NodeBuilder::new(if constant { "constant slice type" } else {"slice type"},TYPE_COLOR).convert_child(subtype).build(),
-            AstNodeData::Reference { constant, subtype } => NodeBuilder::new(if constant { "constant reference type" } else {"reference type"},TYPE_COLOR).convert_child(subtype).build(),
+            AstNodeData::ImplicitArray { constant, subtype } => NodeBuilder::new(if *constant { "implicit constant array type" } else {"implicit array type"},TYPE_COLOR).convert_child(subtype).build(),
+            AstNodeData::Slice { constant, subtype } => NodeBuilder::new(if *constant { "constant slice type" } else {"slice type"},TYPE_COLOR).convert_child(subtype).build(),
+            AstNodeData::Reference { constant, subtype } => NodeBuilder::new(if *constant { "constant reference type" } else {"reference type"},TYPE_COLOR).convert_child(subtype).build(),
             AstNodeData::TupleCall { functional, args } =>
                 NodeBuilder::new("()",KEYWORD_COLOR)
                     .convert_field("value",functional)
-                    .list_field("arguments",args)
+                    .list_field("arguments",args.iter())
                     .build(),
             AstNodeData::ArrayCall { functional, args } =>
                 NodeBuilder::new("[]",KEYWORD_COLOR)
                     .convert_field("value",functional)
-                    .list_field("arguments",args)
+                    .list_field("arguments",args.iter())
                     .build(),
             AstNodeData::NamedBlock { name, body } =>
                 NodeBuilder::new("named block",KEYWORD_COLOR)
                     .make_field("name",name,METHOD_COLOR)
-                    .list_field("body",body)
+                    .list_field("body",body.iter())
                     .build(),
             AstNodeData::NamedBreak { name, value } =>
                 NodeBuilder::new("break(...)",KEYWORD_COLOR)
@@ -842,13 +713,13 @@ impl DisplayableTree for AstNodeData {
             AstNodeData::ObjectCall { functional, args } =>
                 NodeBuilder::new("{}",KEYWORD_COLOR)
                     .convert_field("value",functional)
-                    .list_field("arguments",args)
+                    .list_field("arguments",args.iter())
                     .build(),
             AstNodeData::ErrorNode { message, .. } => NodeBuilder::new_terminal(message,Color::BrightRed),
             AstNodeData::Match { value, arms } =>
                 NodeBuilder::new("match",KEYWORD_COLOR)
                     .convert_field("value",value)
-                    .list_field("arms",arms)
+                    .list_field("arms",arms.iter())
                     .build(),
             AstNodeData::MatchRange { begin, end } => NodeBuilder::new_binary("match range",KEYWORD_COLOR,begin,end),
             AstNodeData::DestructuringMatchArm { matches, store } => {
@@ -856,14 +727,14 @@ impl DisplayableTree for AstNodeData {
                 match store {
                     None => builder.make_field("store into", "_",NAME_COLOR),
                     Some(store) => builder.convert_field("store into",store),
-                }.list_field("matches",matches).build()
+                }.list_field("matches",matches.iter()).build()
             }
             AstNodeData::MatchEnumStructure { enum_identifier, children } => {
                 let mut builder = NodeBuilder::new("enum structure match",KEYWORD_COLOR);
                 builder.make_field("id",enum_identifier,NAME_COLOR);
                 let mut sub_builder = NodeBuilder::new_unnamed();
                 for (name, field) in children {
-                    sub_builder.convert_field(name,field)
+                    sub_builder.convert_field(name,field);
                 }
                 builder.add_field("fields",sub_builder.build());
                 builder.build()
@@ -871,7 +742,7 @@ impl DisplayableTree for AstNodeData {
             AstNodeData::MatchEnumTuple { enum_identifier, children } =>
                 NodeBuilder::new("enum tuple match", KEYWORD_COLOR)
                     .make_field("id",enum_identifier,NAME_COLOR)
-                    .list_field("fields",children)
+                    .list_field("fields",children.iter())
                     .build(),
             AstNodeData::MatchValue(value) => value.to_node(),
             AstNodeData::MatchConstraint(constraint) =>
@@ -881,21 +752,21 @@ impl DisplayableTree for AstNodeData {
             AstNodeData::DestructuringMatchStructure(matches) => {
                 let mut builder = NodeBuilder::new("structure match",KEYWORD_COLOR);
                 for (name, field) in matches {
-                    builder.convert_field(name,field)
+                    builder.convert_field(name,field);
                 }
                 builder.build()
             }
             AstNodeData::DestructuringMatchTuple(matches) =>
                 NodeBuilder::new("tuple match",KEYWORD_COLOR)
-                    .add_children(matches)
+                    .add_children(matches.iter())
                     .build(),
             AstNodeData::DestructuringMatchArray(matches) =>
                 NodeBuilder::new("array match",KEYWORD_COLOR)
-                    .add_children(matches)
+                    .add_children(matches.iter())
                     .build(),
             AstNodeData::Enum { containing_type, children } => match containing_type {
-                None => NodeBuilder::new("enum",TYPE_COLOR).add_children(children).build(),
-                Some(containing_type) => NodeBuilder::new("enum",TYPE_COLOR).convert_field("containing type",containing_type).list_field("values",children).build(),
+                None => NodeBuilder::new("enum",TYPE_COLOR).add_children(children.iter()).build(),
+                Some(containing_type) => NodeBuilder::new("enum",TYPE_COLOR).convert_field("containing type",containing_type).list_field("values",children.iter()).build(),
             }
             AstNodeData::FieldLiteral { name, value } => NodeBuilder::new_unnamed().make_field("name",name,NAME_COLOR).convert_field("value",value).build(),
             AstNodeData::Subscription { lhs, rhs } =>  NodeBuilder::new_binary(".",KEYWORD_COLOR,lhs,rhs),
@@ -937,7 +808,7 @@ impl DisplayableTree for AstNodeData {
                 builder.make_field("name", name, TYPE_COLOR);
                 builder.make_field("flags",format!("{flags}"),KEYWORD_COLOR);
                 if let Some(args) = generic_arguments {
-                    builder.list_field("generic arguments",args);
+                    builder.list_field("generic arguments",args.iter());
                 }
                 builder.convert_field("alias", alias);
                 builder.build()
@@ -962,18 +833,18 @@ impl DisplayableTree for AstNodeData {
                     .make_field("name",name,TYPE_COLOR)
                     .build(),
             AstNodeData::Structure { is_tuple, interfaces, children } => {
-                let mut builder = NodeBuilder::new(if is_tuple { "tuple" } else { "structure" }, TYPE_COLOR);
+                let mut builder = NodeBuilder::new(if *is_tuple { "tuple" } else { "structure" }, TYPE_COLOR);
                 if interfaces.len() == 0 {
-                    builder.add_children(children);
+                    builder.add_children(children.iter());
                 } else {
-                    builder.list_field("interfaces", interfaces);
-                    builder.list_field("children", children);
+                    builder.list_field("interfaces", interfaces.iter());
+                    builder.list_field("children", children.iter());
                 }
                 builder.build()
             }
             AstNodeData::FunctionPrototype { flags, name, arguments, return_type } => {
                 let mut builder = NodeBuilder::new("fn prototype", KEYWORD_COLOR);
-                builder.make_field("name",name, METHOD_COLOR).make_field("flags",format!("{flags}"),KEYWORD_COLOR).list_field("arguments",arguments);
+                builder.make_field("name",name, METHOD_COLOR).make_field("flags",format!("{flags}"),KEYWORD_COLOR).list_field("arguments",arguments.iter());
                 if let Some(ret) = return_type {
                     builder.convert_field("return type", ret);
                 }
@@ -981,7 +852,7 @@ impl DisplayableTree for AstNodeData {
             }
             AstNodeData::FunctionImport{ flags, name, arguments, return_type , import_name} => {
                 let mut builder = NodeBuilder::new("fn import", KEYWORD_COLOR);
-                builder.make_field("name",name, METHOD_COLOR).make_field("flags",format!("{flags}"),KEYWORD_COLOR).list_field("arguments",arguments);
+                builder.make_field("name",name, METHOD_COLOR).make_field("flags",format!("{flags}"),KEYWORD_COLOR).list_field("arguments",arguments.iter());
                 if let Some(ret) = return_type {
                     builder.convert_field("return type", ret);
                 }
@@ -994,9 +865,9 @@ impl DisplayableTree for AstNodeData {
                 let mut builder = NodeBuilder::new("fn", KEYWORD_COLOR);
                 builder.make_field("name",name, METHOD_COLOR).make_field("flags",format!("{flags}"),KEYWORD_COLOR);
                 if let Some(args) = generic_arguments {
-                    builder.list_field("generic arguments",args);
+                    builder.list_field("generic arguments",args.iter());
                 }
-                builder.list_field("arguments",arguments);
+                builder.list_field("arguments",arguments.iter());
                 if let Some(ret) = return_type {
                     builder.convert_field("return type", ret);
                 }
@@ -1007,9 +878,9 @@ impl DisplayableTree for AstNodeData {
                 let mut builder = NodeBuilder::new("operator", KEYWORD_COLOR);
                 builder.make_field("operator",operator, METHOD_COLOR).make_field("flags",format!("{flags}"),KEYWORD_COLOR);
                 if let Some(args) = generic_arguments {
-                    builder.list_field("generic arguments",args);
+                    builder.list_field("generic arguments",args.iter());
                 }
-                builder.list_field("arguments",arguments);
+                builder.list_field("arguments",arguments.iter());
                 if let Some(ret) = return_type {
                     builder.convert_field("return type", ret);
                 }
@@ -1027,7 +898,7 @@ impl DisplayableTree for AstNodeData {
             }
             AstNodeData::Closure { arguments, captures, return_type, body } => {
                 let mut builder = NodeBuilder::new("closure", KEYWORD_COLOR);
-                builder.list_field("arguments",arguments).list_field("captures",captures);
+                builder.list_field("arguments",arguments.iter()).list_field("captures",captures.iter());
                 if let Some(ret) = return_type {
                     builder.convert_field("return type", ret);
                 }
@@ -1036,7 +907,7 @@ impl DisplayableTree for AstNodeData {
             }
             AstNodeData::AnonymousFunction { flags, arguments, return_type, body } => {
                 let mut builder = NodeBuilder::new("anonymous function", KEYWORD_COLOR);
-                builder.make_field("flags",format!("{flags}"),KEYWORD_COLOR).list_field("arguments",arguments);
+                builder.make_field("flags",format!("{flags}"),KEYWORD_COLOR).list_field("arguments",arguments.iter());
                 if let Some(ret) = return_type {
                     builder.convert_field("return type", ret);
                 }
@@ -1046,7 +917,7 @@ impl DisplayableTree for AstNodeData {
             AstNodeData::FunctionType { flags, arguments, return_type } =>
                 NodeBuilder::new("fn type",TYPE_COLOR)
                     .make_field("flags",format!("{flags}"),KEYWORD_COLOR)
-                    .list_field("arguments",arguments)
+                    .list_field("arguments",arguments.iter())
                     .convert_field("return type",return_type)
                     .build(),
             AstNodeData::StructureDestructure(fields) => {
@@ -1056,17 +927,17 @@ impl DisplayableTree for AstNodeData {
                 }
                 builder.build()
             },
-            AstNodeData::TupleDestructure(fields) => NodeBuilder::new("tuple destructure", OTHER_COLOR).add_children(fields).build(),
-            AstNodeData::ArrayDestructure(fields) => NodeBuilder::new("array destructure", OTHER_COLOR).add_children(fields).build(),
-            AstNodeData::SliceDestructure(fields) => NodeBuilder::new("slice destructure", OTHER_COLOR).add_children(fields).build(),
+            AstNodeData::TupleDestructure(fields) => NodeBuilder::new("tuple destructure", OTHER_COLOR).add_children(fields.iter()).build(),
+            AstNodeData::ArrayDestructure(fields) => NodeBuilder::new("array destructure", OTHER_COLOR).add_children(fields.iter()).build(),
+            AstNodeData::SliceDestructure(fields) => NodeBuilder::new("slice destructure", OTHER_COLOR).add_children(fields.iter()).build(),
             AstNodeData::Destructure { structure, value } => NodeBuilder::new("destructure",KEYWORD_COLOR).convert_field("structure", structure).convert_field("value", value).build(),
             AstNodeData::Interface { interfaces, children, dynamic } => {
-                let mut builder = NodeBuilder::new(if dynamic { "dynamic interface" } else { "interface" }, TYPE_COLOR);
+                let mut builder = NodeBuilder::new(if *dynamic { "dynamic interface" } else { "interface" }, TYPE_COLOR);
                 if interfaces.len() == 0 {
-                    builder.add_children(children);
+                    builder.add_children(children.iter());
                 } else {
-                    builder.list_field("interfaces", interfaces);
-                    builder.list_field("children", children);
+                    builder.list_field("interfaces", interfaces.iter());
+                    builder.list_field("children", children.iter());
                 }
                 builder.build()
             }
@@ -1109,7 +980,7 @@ impl DisplayableTree for AstNodeData {
                 }
                 builder.convert_field("iterable", iterable);
                 if transformations.len() > 0 {
-                    builder.list_field("transformations", transformations);
+                    builder.list_field("transformations", transformations.iter());
                 }
                 builder.convert_field("body", body);
                 if let Some(else_statement) = else_statement {
@@ -1122,7 +993,7 @@ impl DisplayableTree for AstNodeData {
                 if let Some(store) = store {
                     builder.convert_field("capture", store);
                 }
-                builder.list_field("matches", matches);
+                builder.list_field("matches", matches.iter());
                 builder.convert_field("body", body);
                 builder.build()
             }
@@ -1132,7 +1003,7 @@ impl DisplayableTree for AstNodeData {
                 let mut builder = NodeBuilder::new_unnamed();
                 builder.make_field("name",name,NAME_COLOR);
                 if children.len() > 0 {
-                    builder.list_field(if *tuple { "tuple" } else {"structure"},children);
+                    builder.list_field(if *tuple { "tuple" } else {"structure"},children.iter());
                 }
                 if let Some(value) = value {
                     builder.convert_field("value", value);
@@ -1142,7 +1013,7 @@ impl DisplayableTree for AstNodeData {
             AstNodeData::ArrayType { constant, dimensions, child } =>
                 NodeBuilder::new("array type", TYPE_COLOR)
                     .make_field("constant", *constant, VALUE_COLOR)
-                    .list_field("dimensions", dimensions)
+                    .list_field("dimensions", dimensions.iter())
                     .convert_field("subtype", child)
                     .build(),
             AstNodeData::TypeMemberReference { referee, member } =>
@@ -1153,1271 +1024,8 @@ impl DisplayableTree for AstNodeData {
             AstNodeData::GenericInstanceReference { referee, generic_args }  =>
                 NodeBuilder::new("::<>",KEYWORD_COLOR)
                     .convert_field("value",referee)
-                    .list_field("arguments",generic_args)
+                    .list_field("arguments",generic_args.iter())
                     .build(),
         }
     }
 }
-
-/*
-impl AstNodeData {
-    fn display_depth(&self, f: &mut Formatter<'_>, pipes: &PipesList) -> std::fmt::Result {
-        match self {
-            AstNodeData::Bool => writeln!(f, "{}", "bool".fg(Color::Red)),
-            AstNodeData::SignedSize => writeln!(f, "{}", "isize".fg(Color::Red)),
-            AstNodeData::UnsignedSize => writeln!(f, "{}", "usize".fg(Color::Red)),
-            AstNodeData::Float32 => writeln!(f, "{}", "f32".fg(Color::Red)),
-            AstNodeData::Float64 => writeln!(f, "{}", "f64".fg(Color::Red)),
-            AstNodeData::Complex32 => writeln!(f, "{}", "c32".fg(Color::Red)),
-            AstNodeData::Complex64 => writeln!(f, "{}", "c64".fg(Color::Red)),
-            AstNodeData::Opaque => writeln!(f, "{}", "opaque".fg(Color::Red)),
-            AstNodeData::Void => writeln!(f, "{}", "void".fg(Color::Red)),
-            AstNodeData::CompileTimeFloat => writeln!(f, "{}", "comptime_float".fg(Color::Red)),
-            AstNodeData::CompileTimeComplex => writeln!(f, "{}", "comptime_complex".fg(Color::Red)),
-            AstNodeData::CompileTimeString => writeln!(f, "{}", "comptime_string".fg(Color::Red)),
-            AstNodeData::CompileTimeInteger => writeln!(f, "{}", "comptime_integer".fg(Color::Red)),
-            AstNodeData::Type => writeln!(f, "{}", "type".fg(Color::Red)),
-            AstNodeData::NoReturn => writeln!(f, "{}", "false".fg(Color::Red)),
-            AstNodeData::True => writeln!(f, "{}", "true".fg(Color::Magenta)),
-            AstNodeData::False => writeln!(f, "{}", "false".fg(Color::Magenta)),
-            AstNodeData::None => writeln!(f, "{}", "none".fg(Color::Magenta)),
-            AstNodeData::Underscore => writeln!(f, "{}", '_'.fg(Color::Cyan)),
-            AstNodeData::Continue => writeln!(f, "{}", "continue".fg(Color::Blue)),
-            AstNodeData::EmptyBreak => writeln!(f, "{}", "break".fg(Color::Blue)),
-            AstNodeData::EmptyReturn => writeln!(f, "{}", "return".fg(Color::Blue)),
-            AstNodeData::SelfValue => writeln!(f, "{}", "self".fg(Color::Cyan)),
-            AstNodeData::ConstSelfValue => writeln!(f, "{}", "~self".fg(Color::Cyan)),
-            AstNodeData::SelfType => writeln!(f, "{}", "Self".fg(Color::Red)),
-            AstNodeData::ConstReferenceImplicitCapture => writeln!(f, "{}","implicit constant capture".fg(Color::Yellow)),
-            AstNodeData::ReferenceImplicitCapture => writeln!(f, "{}", "implicit reference capture".fg(Color::Yellow)),
-            AstNodeData::CopyImplicitCapture => writeln!(f, "{}", "implicit copy capture".fg(Color::Yellow)),
-            AstNodeData::MatchAll => writeln!(f, "{}", "match all".fg(Color::Yellow)),
-            AstNodeData::NonExhaustive => writeln!(f, "{}", "non exhaustive match".fg(Color::Yellow)),
-            AstNodeData::UnknownSize => writeln!(f, "{}", "unknown".fg(Color::Magenta)),
-            AstNodeData::InferredSize => writeln!(f, "{}", "inferred".fg(Color::Magenta)),
-            AstNodeData::SignedIntegerType(size) => writeln!(f, "{}{}", 'i'.fg(Color::Red), size.fg(Color::Red)),
-            AstNodeData::UnsignedIntegerType(size) => writeln!(f, "{}{}", 'u'.fg(Color::Red), size.fg(Color::Red)),
-            AstNodeData::StringLiteral(s) => writeln!(f, "{}", s.escape_with_quotes("\"").fg(Color::Red)),
-            AstNodeData::FloatLiteral(flt) => writeln!(f, "{}", flt.fg(Color::Magenta)),
-            AstNodeData::IntegerLiteral(i) => writeln!(f, "{}", i.fg(Color::Magenta)),
-            AstNodeData::ImaginaryLiteral(flt) => writeln!(f, "{}{}", flt.fg(Color::Magenta), 'I'.fg(Color::Magenta)),
-            AstNodeData::NameReference(name) => writeln!(f, "{}", name.fg(Color::Cyan)),
-            AstNodeData::UnnamedBlock(children) => {
-                writeln!(f, "{}","unnamed block".fg(Color::Yellow))?;
-                write_list(f, pipes, children)
-            }
-            AstNodeData::TupleLiteral(children) => {
-                writeln!(f, "{}","tuple literal".fg(Color::Yellow))?;
-                write_list(f, pipes, children)
-            }
-            AstNodeData::ArrayLiteral(children) => {
-                writeln!(f, "{}","array literal".fg(Color::Yellow))?;
-                write_list(f, pipes, children)
-            }
-            AstNodeData::EnumLiteral(lit) => writeln!(f, "{}: {}", "enum literal".fg(Color::Yellow), lit.fg(Color::Cyan)),
-            AstNodeData::BuiltinReference(reference) => writeln!(f, "{}: {}","builtin reference".fg(Color::Yellow), reference.fg(Color::BrightYellow)),
-            AstNodeData::CopyCapture(var) => writeln!(f, "{}: {}","copy capture".fg(Color::Yellow), var.fg(Color::Cyan)),
-            AstNodeData::ReferenceCapture(var) => writeln!(f, "{}: {}", "reference capture".fg(Color::Yellow), var.fg(Color::Cyan)),
-            AstNodeData::ConstantReferenceCapture(var) => writeln!(f, "{}: {}","constant reference capture".fg(Color::Yellow), var.fg(Color::Cyan)),
-            AstNodeData::ObjectLiteral(children) => {
-                writeln!(f, "{}", "object literal".fg(Color::Yellow))?;
-                write_list(f, pipes, children)
-            }
-            AstNodeData::Block(children) => {
-                writeln!(f, "{}", "block".fg(Color::Yellow))?;
-                write_list(f, pipes, children)
-            }
-            AstNodeData::Break(value) =>
-                write_unary(f, format!("{}", "break".fg(Color::Blue)), value, pipes),
-            AstNodeData::Return(value) =>
-                write_unary(f, format!("{}", "return".fg(Color::Blue)), value, pipes),
-            AstNodeData::ImplicitResult(value) =>
-                write_unary(f, format!("{}", "implicit".fg(Color::Blue)), value, pipes),
-            AstNodeData::Yield(value) =>
-                write_unary(f, format!("{}", "yield".fg(Color::Blue)), value, pipes),
-            AstNodeData::Not(value) =>
-                write_unary(f, format!("{}", "not".fg(Color::Blue)), value, pipes),
-            AstNodeData::UnaryMinus(value) =>
-                write_unary(f, format!("{}", "unary -".fg(Color::Blue)), value, pipes),
-            AstNodeData::UnaryPlus(value) =>
-                write_unary(f, format!("{}", "unary +".fg(Color::Blue)), value, pipes),
-            AstNodeData::Dereference(value) =>
-                write_unary(f, format!("{}", "$".fg(Color::Blue)), value, pipes),
-            AstNodeData::AddressOf(value) =>
-                write_unary(f, format!("{}", "&".fg(Color::Blue)), value, pipes),
-            AstNodeData::Concept(value) =>
-                write_unary(f, format!("{}", "concept".fg(Color::Blue)), value, pipes),
-            AstNodeData::Loop(value) =>
-                write_unary(f, format!("{}", "loop".fg(Color::Blue)), value, pipes),
-            AstNodeData::FilterTransformation(value) =>
-                write_unary(f, format!("{}", "?".fg(Color::Blue)), value, pipes),
-            AstNodeData::MapTransformation(value) =>
-                write_unary(f, format!("{}", "|".fg(Color::Blue)), value, pipes),
-            AstNodeData::Comptime(value) =>
-                write_unary(f, format!("{}", "comptime".fg(Color::Blue)), value, pipes),
-            AstNodeData::ImplicitArray {
-                constant,
-                subtype
-            } =>
-                write_unary(f, format!("{}",(if *constant {
-                    "constant implicit array type type"
-                } else {
-                    "implicit array type"
-                }).fg(Color::Red)), subtype, pipes),
-            AstNodeData::Slice {
-                constant,
-                subtype
-            } =>
-                write_unary(f, format!("{}",(if *constant {
-                    "constant slice type"
-                } else {
-                    "slice type"
-                }).fg(Color::Red)), subtype, pipes),
-            AstNodeData::Reference {
-                constant,
-                subtype
-            } =>
-                write_unary(f, format!("{}",(if *constant {
-                    "constant reference type"
-                } else {
-                    "reference type"
-                }).fg(Color::Red)), subtype, pipes),
-            AstNodeData::TupleCall {
-                functional,
-                args
-            } => {
-                let full_value = with_pipe_count(pipes,7);
-                let empty_value = with_empty_count(pipes,7);
-                let empty = with_empty(pipes);
-                writeln!(f, "{}", "()".fg(Color::Blue))?;
-                write_pipes(f, pipes)?;
-                write_begin(f)?;
-                write_pipes(f, pipes)?;
-                if args.is_empty() {
-                    write_end(f)?;
-                } else {
-                    write_split(f)?;
-                }
-                write!(f, "value: ")?;
-                functional.data.display_depth(f, if args.is_empty() { &empty_value } else { &full_value })?;
-                if !args.is_empty() {
-                    write_pipes(f, pipes)?;
-                    write_empty(f)?;
-                    write_pipes(f, pipes)?;
-                    write_end(f)?;
-                    writeln!(f, "arguments")?;
-                    write_list(f, &empty, args)?;
-                }
-                Ok(())
-            }
-            AstNodeData::ArrayCall {
-                functional,
-                args
-            } => {
-                let full_value = with_pipe_count(pipes,7);
-                let empty_value = with_empty_count(pipes,7);
-                let empty = with_empty(pipes);
-                writeln!(f, "{}", "[]".fg(Color::Blue))?;
-                write_pipes(f, pipes)?;
-                write_begin(f)?;
-                write_pipes(f, pipes)?;
-                if args.is_empty() {
-                    write_end(f)?;
-                } else {
-                    write_split(f)?;
-                }
-                write!(f, "value: ")?;
-                functional.data.display_depth(f, if args.is_empty() { &empty_value } else { &full_value })?;
-                if !args.is_empty() {
-                    write_pipes(f, pipes)?;
-                    write_empty(f)?;
-                    write_pipes(f, pipes)?;
-                    write_end(f)?;
-                    writeln!(f, "arguments")?;
-                    write_list(f, &empty, args)?;
-                }
-                Ok(())
-            }
-            AstNodeData::NamedBlock {
-                name,
-                body
-            } => {
-                writeln!(f, "{}: {}", "block".fg(Color::Yellow), name.fg(Color::BrightYellow))?;
-                write_list(f, pipes, body)
-            }
-            AstNodeData::NamedBreak {
-                name,
-                value
-            } =>
-                write_unary(f, format!("{}: {}", "yield".fg(Color::Blue), name.fg(Color::BrightYellow)), value, pipes),
-            AstNodeData::ObjectCall {
-                functional,
-                args
-            } => {
-                let full_value = with_pipe_count(pipes,7);
-                let empty_value = with_empty_count(pipes,7);
-                let empty = with_empty(pipes);
-                writeln!(f, "{}", "{}".fg(Color::Blue))?;
-                write_pipes(f, pipes)?;
-                write_begin(f)?;
-                write_pipes(f, pipes)?;
-                if args.is_empty() {
-                    write_end(f)?;
-                } else {
-                    write_split(f)?;
-                }
-                write!(f, "value: ")?;
-                functional.data.display_depth(f, if args.is_empty() { &empty_value } else { &full_value })?;
-                if !args.is_empty() {
-                    write_pipes(f, pipes)?;
-                    write_empty(f)?;
-                    write_pipes(f, pipes)?;
-                    write_end(f)?;
-                    writeln!(f, "arguments")?;
-                    write_list(f, &empty, args)?;
-                }
-                Ok(())
-            }
-            AstNodeData::ErrorNode {
-                message,
-                ..
-            } => writeln!(f, "{}: {}", "error".fg(Color::BrightRed), message),
-            AstNodeData::Match {
-                value,
-                arms
-            } => {
-                let full_value = with_pipe_count(pipes,7);
-                let empty_value = with_empty_count(pipes,7);
-                let empty = with_empty(pipes);
-                writeln!(f, "{}", "match".fg(Color::Blue))?;
-                write_pipes(f, pipes)?;
-                write_begin(f)?;
-                write_pipes(f, pipes)?;
-                if arms.is_empty() {
-                    write_end(f)?;
-                } else {
-                    write_split(f)?;
-                }
-                write!(f, "value: ")?;
-                value.data.display_depth(f, if arms.is_empty() { &empty_value } else { &full_value })?;
-                if !arms.is_empty() {
-                    write_pipes(f, pipes)?;
-                    write_empty(f)?;
-                    write_pipes(f, pipes)?;
-                    write_end(f)?;
-                    writeln!(f, "arms")?;
-                    write_list(f, &empty, arms)?;
-                }
-                Ok(())
-            }
-            AstNodeData::MatchRange {
-                begin,
-                end
-            } => write_binary(f, format!("{}","match range".fg(Color::Yellow)), begin, end, pipes),
-            AstNodeData::DestructuringMatchArm {
-                matches,
-                store
-            } => {
-                let full_store = with_pipe_count(pipes,12);
-                let empty_store = with_empty_count(pipes,12);
-                let empty = with_empty(pipes);
-                writeln!(f, "{}", "destructuring match".fg(Color::Blue))?;
-                write_pipes(f, pipes)?;
-                write_begin(f)?;
-                write_pipes(f, pipes)?;
-                if matches.is_empty() {
-                    write_end(f)?;
-                } else {
-                    write_split(f)?;
-                }
-                write!(f, "store into: ")?;
-                if let Some(s) = store {
-                    s.data.display_depth(f, if matches.is_empty() { &empty_store } else { &full_store })?;
-                } else {
-                    writeln!(f, "{}", "_".fg(Color::Cyan))?;
-                }
-                if !matches.is_empty() {
-                    write_pipes(f, pipes)?;
-                    write_end(f)?;
-                    writeln!(f, "matches")?;
-                    write_list(f, &empty, matches)?;
-                }
-                Ok(())
-            }
-            AstNodeData::MatchEnumStructure {
-                enum_identifier,
-                children
-            } => {
-                let empty = with_empty(pipes);
-                writeln!(f, "{}", "match enum structure".fg(Color::Blue))?;
-                write_pipes(f, pipes)?;
-                write_begin(f)?;
-                write_pipes(f, pipes)?;
-                if children.is_empty() {
-                    write_end(f)?;
-                } else {
-                    write_split(f)?;
-                }
-                writeln!(f, "enum: {}", enum_identifier.fg(Color::Cyan))?;
-                if !children.is_empty() {
-                    write_pipes(f, pipes)?;
-                    write_empty(f)?;
-                    write_pipes(f, pipes)?;
-                    write_end(f)?;
-                    writeln!(f, "fields")?;
-                    write_dict(f, &empty, children)?;
-                }
-                Ok(())
-            }
-            AstNodeData::MatchEnumTuple {
-                enum_identifier,
-                children
-            } => {
-                let empty = with_empty(pipes);
-                writeln!(f, "{}", "match enum tuple".fg(Color::Blue))?;
-                write_pipes(f, pipes)?;
-                write_begin(f)?;
-                write_pipes(f, pipes)?;
-                if children.is_empty() {
-                    write_end(f)?;
-                } else {
-                    write_split(f)?;
-                }
-                writeln!(f, "enum: {}", enum_identifier.fg(Color::Cyan))?;
-                if !children.is_empty() {
-                    write_pipes(f, pipes)?;
-                    write_empty(f)?;
-                    write_pipes(f, pipes)?;
-                    write_end(f)?;
-                    writeln!(f, "fields")?;
-                    write_list(f, &empty, children)?;
-                }
-                Ok(())
-            }
-            AstNodeData::MatchValue(value) => write_unary(f, format!("{}", "match value".fg(Color::Blue)), value, pipes),
-            AstNodeData::MatchConstraint(constraint) => write_unary(f, format!("{}", "match constraint".fg(Color::Blue)), constraint, pipes),
-            AstNodeData::DestructuringMatchStructure(structure) => {
-                writeln!(f, "{}", "match structure".fg(Color::Blue))?;
-                write_dict(f, pipes, structure)
-            }
-            AstNodeData::DestructuringMatchTuple(tuple) => {
-                writeln!(f, "{}","match tuple".fg(Color::Blue))?;
-                write_list(f, pipes, tuple)
-            }
-            AstNodeData::DestructuringMatchArray(array) => {
-                writeln!(f, "{}","match array".fg(Color::Blue))?;
-                write_list(f, pipes, array)
-            }
-            AstNodeData::Enum {
-                containing_type,
-                children
-            } => {
-                writeln!(f, "{}", "enum".fg(Color::Red))?;
-                match containing_type {
-                    None => write_list(f, pipes, children),
-                    Some(c_type) => {
-                        let full_containing = with_pipe_count(pipes,17);
-                        let empty_containing = with_empty_count(pipes,17);
-                        let empty = with_empty(pipes);
-                        write_pipes(f, pipes)?;
-                        write_begin(f)?;
-                        write_pipes(f, pipes)?;
-                        if children.is_empty() {
-                            write_end(f)?;
-                        } else {
-                            write_split(f)?;
-                        }
-                        write!(f, "containing type: ")?;
-                        c_type.data.display_depth(f, if children.is_empty() { &empty_containing } else { &full_containing })?;
-                        if !children.is_empty() {
-                            write_pipes(f, pipes)?;
-                            write_empty(f)?;
-                            write_pipes(f, pipes)?;
-                            write_end(f)?;
-                            writeln!(f, "children")?;
-                            write_list(f, &empty, children)?;
-                        }
-                        Ok(())
-                    }
-                }
-            }
-            AstNodeData::FieldLiteral {
-                name,
-                value
-            } => write_unary(f, format!("{}: {}", "field literal".fg(Color::Yellow), name.fg(Color::Cyan)), value, pipes),
-            AstNodeData::Subscription {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}",".".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::Multiplication {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}","*".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::Division {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}","/".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::Modulus {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}","%".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::Addition {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}","+".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::Subtraction {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}","-".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::LeftShift {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}","<<".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::RightShift {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}",">>".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::LesserThan {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}","<".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::GreaterThan {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}",">".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::LesserEqual {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}","<=".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::GreaterEqual {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}",">=".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::EqualTo {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}","==".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::NotEqualTo {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}","!=".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::And {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}", "and".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::Or {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}", "or".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::Xor {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}", "xor".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::Combine {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}","&".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::Reassign {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}",":=".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::Assign {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}","=".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::AddAssign {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}","+=".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::SubtractAssign {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}","-=".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::MultiplyAssign {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}","*=".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::DivideAssign {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}","/=".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::ModulateAssign {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}","%=".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::ShiftLeftAssign {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}","<<=".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::ShiftRightAssign {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}",">>=".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::AndAssign {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}", "and=".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::OrAssign {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}", "or=".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::XorAssign {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}", "xor=".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::IsType {
-                lhs,
-                rhs
-            } => write_binary(f, format!("{}", "is".fg(Color::Blue)), lhs, rhs, pipes),
-            AstNodeData::DynamicCast {
-                lhs,
-                to
-            } => write_binary(f, format!("{}","@*".fg(Color::Blue)), lhs, to, pipes),
-            AstNodeData::Cast {
-                lhs,
-                to
-            } => write_binary(f, format!("{}","@".fg(Color::Blue)), lhs, to, pipes),
-            AstNodeData::Range {
-                begin,
-                end
-            } => write_binary(f, format!("{}","range".fg(Color::Blue)), begin, end, pipes),
-            AstNodeData::TypeDeclaration {
-                flags,
-                name,
-                generic_arguments,
-                alias
-            } => {
-                writeln!(f, "{}", "type".fg(Color::Blue))?;
-                write_pipes(f, pipes)?;
-                write_begin(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                writeln!(f, "name: {}", name.fg(Color::Red))?;
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                writeln!(f, "flags:{}", flags)?;
-                if let Some(args) = generic_arguments {
-                    let full = with_pipe(pipes);
-                    write_pipes(f, pipes)?;
-                    write_empty(f)?;
-                    write_pipes(f, pipes)?;
-                    write_split(f)?;
-                    writeln!(f, "generic arguments")?;
-                    write_list(f, &full, args)?;
-                }
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-                write_pipes(f, pipes)?;
-                write_end(f)?;
-                let empty = with_empty_count(pipes,7);
-                write!(f, "alias: ")?;
-                alias.data.display_depth(f, &empty)
-            }
-            AstNodeData::Field {
-                flags, name, field_type
-            } => {
-                writeln!(f, "{}", "field".fg(Color::Yellow))?;
-                write_pipes(f, pipes)?;
-                write_begin(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                if let Some(name) = name {
-                    writeln!(f, "name: {}", name.fg(Color::Cyan))?;
-                    write_pipes(f, pipes)?;
-                    write_empty(f)?;
-                    write_pipes(f, pipes)?;
-                    write_split(f)?;
-                }
-                writeln!(f, "flags:{}", flags)?;
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-                write_pipes(f, pipes)?;
-                write_end(f)?;
-                let empty = with_empty_count(pipes,6);
-                write!(f, "type: ")?;
-                field_type.data.display_depth(f, &empty)
-            }
-            AstNodeData::Argument {
-                name, argument_type
-            } => {
-                match name {
-                    Some(name) => {
-                        writeln!(f, "{}","argument".fg(Color::Yellow))?;
-                        write_pipes(f, pipes)?;
-                        write_begin(f)?;
-                        write_pipes(f, pipes)?;
-                        write_split(f)?;
-                        writeln!(f, "name: {}", name.fg(Color::Cyan))?;
-                        write_pipes(f, pipes)?;
-                        write_empty(f)?;
-                        write_pipes(f, pipes)?;
-                        write_end(f)?;
-                        let empty = with_empty_count(pipes,6);
-                        write!(f, "type: ")?;
-                        argument_type.data.display_depth(f, &empty)
-                    }
-                    None => write_unary(f, "argument".to_string(), argument_type, pipes)
-                }
-            }
-            AstNodeData::Import {
-                path,
-                name
-            } => {
-                writeln!(f, "{}", "import".fg(Color::Blue))?;
-                write_pipes(f, pipes)?;
-                write_begin(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                writeln!(f, "path: {}", path.fg(Color::Green))?;
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-                write_pipes(f, pipes)?;
-                write_end(f)?;
-                writeln!(f, "name: {}", name.fg(Color::Red))
-            }
-            AstNodeData::Structure {
-                interfaces,
-                children,
-                is_tuple
-            } => {
-                writeln!(f, "{}", if *is_tuple {
-                    "tuple".fg(Color::Red)
-                } else {
-                    "structure".fg(Color::Red)
-                })?;
-                if interfaces.is_empty() {
-                    write_list(f, pipes, children)
-                } else {
-                    write_pipes(f, pipes)?;
-                    write_begin(f)?;
-                    write_pipes(f, pipes)?;
-                    write_split(f)?;
-                    let full = with_pipe(pipes);
-                    let empty = with_empty(pipes);
-                    writeln!(f, "interfaces")?;
-                    write_list(f, &full, interfaces)?;
-                    write_pipes(f, pipes)?;
-                    write_empty(f)?;
-                    write_pipes(f, pipes)?;
-                    write_end(f)?;
-                    write_list(f, &empty, children)
-                }
-            }
-            AstNodeData::FunctionPrototype {
-                flags, name, arguments, return_type
-            } => {
-                let full = with_pipe(pipes);
-                let empty = with_empty(pipes);
-                writeln!(f, "{}", "fn prototype".fg(Color::Blue))?;
-                write_pipes(f, pipes)?;
-                write_begin(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                writeln!(f, "name: {}", name.fg(Color::BrightYellow))?;
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                writeln!(f, "flags:{}", flags)?;
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-                write_pipes(f, pipes)?;
-                if let None = return_type {
-                    write_end(f)?;
-                } else {
-                    write_split(f)?;
-                }
-                writeln!(f, "arguments")?;
-                write_list(f, if let None = return_type { &empty } else { &full }, arguments)?;
-                if let Some(return_type) = return_type {
-                    write_pipes(f, pipes)?;
-                    write_empty(f)?;
-                    write_pipes(f, pipes)?;
-                    write_end(f)?;
-                    let return_type_empty = with_empty_count(pipes,13);
-                    write!(f, "return type: ")?;
-                    return_type.data.display_depth(f, &return_type_empty)?;
-                }
-                Ok(())
-            }
-            AstNodeData::FunctionImport {
-                flags, name, arguments, return_type, import_name: library_name
-            } => {
-                let full = with_pipe(pipes);
-                let empty = with_empty(pipes);
-                writeln!(f, "{}", "fn import".fg(Color::Blue))?;
-                write_pipes(f, pipes)?;
-                write_begin(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                writeln!(f, "name: {}", name.fg(Color::BrightYellow))?;
-                // now we need the import name
-                if let Some(import_name) = library_name {
-                    write_pipes(f, pipes)?;
-                    write_empty(f)?;
-                    write_pipes(f, pipes)?;
-                    write_split(f)?;
-                    let import_full = with_pipe_count(pipes,14);
-                    write!(f, "library name: ")?;
-                    import_name.data.display_depth(f, &import_full)?;
-                }
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                writeln!(f, "flags:{}", flags)?;
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-                write_pipes(f, pipes)?;
-                if let None = return_type {
-                    write_end(f)?;
-                } else {
-                    write_split(f)?;
-                }
-                writeln!(f, "arguments")?;
-                write_list(f, if let None = return_type { &empty } else { &full }, arguments)?;
-
-                if let Some(return_type) = return_type {
-                    write_pipes(f, pipes)?;
-                    write_empty(f)?;
-                    write_pipes(f, pipes)?;
-                    write_end(f)?;
-                    let return_type_empty = with_empty_count(pipes,13);
-                    write!(f, "return type: ")?;
-                    return_type.data.display_depth(f, &return_type_empty)?;
-                }
-                Ok(())
-            }
-            AstNodeData::Function { flags, name, generic_arguments, arguments, return_type, body } => {
-                let full = with_pipe(pipes);
-                writeln!(f, "{}", "fn".fg(Color::Blue))?;
-                write_pipes(f, pipes)?;
-                write_begin(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                writeln!(f, "name: {}", name.fg(Color::BrightYellow))?;
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                writeln!(f, "flags:{}", flags)?;
-                if let Some(generic_arguments) = generic_arguments {
-                    write_pipes(f, pipes)?;
-                    write_empty(f)?;
-                    write_pipes(f, pipes)?;
-                    write_split(f)?;
-                    writeln!(f, "generic arguments")?;
-                    write_list(f, &full, generic_arguments)?;
-                }
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                writeln!(f, "arguments")?;
-                write_list(f, &full, arguments)?;
-                if let Some(return_type) = return_type {
-                    write_pipes(f, pipes)?;
-                    write_empty(f)?;
-                    write_pipes(f, pipes)?;
-                    write_split(f)?;
-                    write!(f, "return type: ")?;
-                    let return_type_full = with_pipe_count(pipes,13);
-                    return_type.data.display_depth(f, &return_type_full)?;
-                }
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-                write_pipes(f, pipes)?;
-                write_end(f)?;
-                let body_empty = with_empty_count(pipes,6);
-                write!(f, "body: ")?;
-                body.data.display_depth(f, &body_empty)
-            }
-            AstNodeData::Operator {
-                flags, operator, generic_arguments, arguments, return_type, body
-            } => {
-                let full = with_pipe(pipes);
-                writeln!(f, "{}", "operator".fg(Color::Blue))?;
-                write_pipes(f, pipes)?;
-                write_begin(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                writeln!(f, "operator: {}", operator.fg(Color::BrightYellow))?;
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                writeln!(f, "flags:{}", flags)?;
-                if let Some(generic_arguments) = generic_arguments {
-                    write_pipes(f, pipes)?;
-                    write_empty(f)?;
-                    write_pipes(f, pipes)?;
-                    write_split(f)?;
-                    writeln!(f, "generic arguments")?;
-                    write_list(f, &full, generic_arguments)?;
-                }
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                writeln!(f, "arguments")?;
-                write_list(f, &full, arguments)?;
-                if let Some(return_type) = return_type {
-                    write_pipes(f, pipes)?;
-                    write_empty(f)?;
-                    write_pipes(f, pipes)?;
-                    write_split(f)?;
-                    write!(f, "return type: ")?;
-                    let return_type_full = with_pipe_count(pipes,13);
-                    return_type.data.display_depth(f, &return_type_full)?;
-                }
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-                write_pipes(f, pipes)?;
-                write_end(f)?;
-                let body_empty = with_empty_count(pipes,6);
-                write!(f, "body: ")?;
-                body.data.display_depth(f, &body_empty)
-            }
-            AstNodeData::VariableDeclaration {
-                definition, value
-            } => write_binary(f, format!("{}","variable declaration".fg(Color::Yellow)), definition, value, pipes),
-            AstNodeData::VariableDefinition { flags, name, variable_type } => {
-                writeln!(f, "{}","variable definition".fg(Color::Yellow))?;
-                write_pipes(f, pipes)?;
-                write_begin(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                writeln!(f, "name: {}", name.fg(Color::Cyan))?;
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-                write_pipes(f, pipes)?;
-                match variable_type {
-                    None => {
-                        write_end(f)?;
-                        writeln!(f, "flags:{}", flags)
-                    }
-                    Some(variable_type) => {
-                        let empty = with_empty_count(pipes,6);
-                        write_split(f)?;
-                        writeln!(f, "flags:{}", flags)?;
-                        write_pipes(f, pipes)?;
-                        write_empty(f)?;
-                        write_pipes(f, pipes)?;
-                        write_end(f)?;
-                        write!(f, "type: ")?;
-                        variable_type.data.display_depth(f, &empty)
-                    }
-                }
-            }
-            AstNodeData::Closure {
-                arguments, captures, return_type, body
-            } => {
-                let full = with_pipe(pipes);
-                writeln!(f, "{}","closure".fg(Color::Blue))?;
-                write_pipes(f, pipes)?;
-                write_begin(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                writeln!(f, "arguments")?;
-                write_list(f, &full, arguments)?;
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                writeln!(f, "captures")?;
-                write_list(f, &full, captures)?;
-                if let Some(return_type) = return_type {
-                    write_pipes(f, pipes)?;
-                    write_empty(f)?;
-                    write_pipes(f, pipes)?;
-                    write_split(f)?;
-                    let return_type_full = with_pipe_count(pipes,13);
-                    write!(f, "return type: ")?;
-                    return_type.data.display_depth(f, &return_type_full)?;
-                }
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-                write_pipes(f, pipes)?;
-                write_end(f)?;
-                write!(f, "body: ")?;
-                let body_empty = with_empty_count(pipes,6);
-                body.data.display_depth(f, &body_empty)
-            }
-            AstNodeData::AnonymousFunction {
-                flags, arguments, return_type, body
-            } => {
-                let full = with_pipe(pipes);
-                writeln!(f, "{}", "anonymous fn".fg(Color::Blue))?;
-                write_pipes(f, pipes)?;
-                write_begin(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                writeln!(f, "flags:{}", flags)?;
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                writeln!(f, "arguments")?;
-                write_list(f, &full, arguments)?;
-                if let Some(return_type) = return_type {
-                    write_pipes(f, pipes)?;
-                    write_empty(f)?;
-                    write_pipes(f, pipes)?;
-                    write_split(f)?;
-                    let return_type_full = with_pipe_count(pipes,13);
-                    write!(f, "return type: ")?;
-                    return_type.data.display_depth(f, &return_type_full)?;
-                }
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-                write_pipes(f, pipes)?;
-                write_end(f)?;
-                write!(f, "body: ")?;
-                let body_empty = with_empty_count(pipes,6);
-                body.data.display_depth(f, &body_empty)
-            }
-            AstNodeData::FunctionType { flags, arguments, return_type } => {
-                let full = with_pipe(pipes);
-                let empty = with_empty(pipes);
-                writeln!(f, "{}", "fn type".fg(Color::Red))?;
-                write_pipes(f, pipes)?;
-                write_begin(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                writeln!(f, "flags:{}", flags)?;
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                writeln!(f, "arguments")?;
-                write_list(f, &full, arguments)?;
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-                write_pipes(f, pipes)?;
-                write_end(f)?;
-                write!(f, "return type: ")?;
-                return_type.data.display_depth(f, &empty)
-            }
-            AstNodeData::StructureDestructure(nodes) => {
-                writeln!(f, "{}", "structure destructure".fg(Color::Yellow))?;
-                write_dict(f, pipes, nodes)
-            }
-            AstNodeData::TupleDestructure(nodes) => {
-                writeln!(f, "{}","tuple destructure".fg(Color::Yellow))?;
-                write_list(f, pipes, nodes)
-            }
-            AstNodeData::ArrayDestructure(nodes) => {
-                writeln!(f, "{}","array destructure".fg(Color::Yellow))?;
-                write_list(f, pipes, nodes)
-            }
-            AstNodeData::SliceDestructure(nodes) => {
-                writeln!(f, "{}","slice destructure".fg(Color::Yellow))?;
-                write_list(f, pipes, nodes)
-            }
-            AstNodeData::Destructure { structure, value } => write_binary(f, format!("{}","destructure".fg(Color::Yellow)), structure, value, pipes),
-            AstNodeData::Interface { interfaces, children, dynamic } => {
-                writeln!(f, "{}", if *dynamic {
-                    "dynamic interface".fg(Color::Red)
-                } else {
-                    "interface".fg(Color::Red)
-                })?;
-                if interfaces.is_empty() {
-                    write_list(f, pipes, children)
-                } else {
-                    write_pipes(f, pipes)?;
-                    write_begin(f)?;
-                    write_pipes(f, pipes)?;
-                    write_split(f)?;
-                    let full = with_pipe(pipes);
-                    let empty = with_empty(pipes);
-                    writeln!(f, "interfaces")?;
-                    write_list(f, &full, interfaces)?;
-                    write_pipes(f, pipes)?;
-                    write_empty(f)?;
-                    write_pipes(f, pipes)?;
-                    write_end(f)?;
-                    write_list(f, &empty, children)
-                }
-            }
-            AstNodeData::If {
-                condition, unwrap, body, else_statement
-            } => {
-                writeln!(f, "{}", "if".fg(Color::Blue))?;
-                write_pipes(f, pipes)?;
-                write_begin(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                write!(f, "condition: ")?;
-                let condition_full = with_pipe_count(pipes,11);
-                condition.data.display_depth(f, &condition_full)?;
-                if let Some(unwrap) = unwrap {
-                    write_pipes(f, pipes)?;
-                    write_empty(f)?;
-                    write_pipes(f, pipes)?;
-                    write_split(f)?;
-                    write!(f, "unwrap: ")?;
-                    let unwrap_full = with_pipe_count(pipes,8);
-                    unwrap.data.display_depth(f, &unwrap_full)?;
-                }
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-                write_pipes(f, pipes)?;
-                if let None = else_statement {
-                    write_end(f)?;
-                } else {
-                    write_split(f)?;
-                }
-                write!(f, "body: ")?;
-                let body_pipes = if let None = else_statement {with_empty_count} else {with_pipe_count}(pipes,6);
-                body.data.display_depth(f, &body_pipes)?;
-                if let Some(else_statement) = else_statement {
-                    write_pipes(f, pipes)?;
-                    write_empty(f)?;
-                    write_pipes(f, pipes)?;
-                    write_end(f)?;
-                    let else_pipes = with_empty_count(pipes,6);
-                    write!(f, "else: ")?;
-                    else_statement.data.display_depth(f, &else_pipes)?;
-                }
-                Ok(())
-            }
-            AstNodeData::ComptimeIf { condition, body, else_statement } => {
-                writeln!(f, "{}", "comptime if".fg(Color::Blue))?;
-                write_pipes(f, pipes)?;
-                write_begin(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                write!(f, "condition: ")?;
-                let condition_full = with_pipe_count(pipes,11);
-                condition.data.display_depth(f, &condition_full)?;
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-                write_pipes(f, pipes)?;
-                if let None = else_statement {
-                    write_end(f)?;
-                } else {
-                    write_split(f)?;
-                }
-                write!(f, "body: ")?;
-                let body_pipes = if let None = else_statement {with_empty_count} else {with_pipe_count}(pipes,6);
-                body.data.display_depth(f, &body_pipes)?;
-                if let Some(else_statement) = else_statement {
-                    write_pipes(f, pipes)?;
-                    write_empty(f)?;
-                    write_pipes(f, pipes)?;
-                    write_end(f)?;
-                    let else_pipes = with_empty_count(pipes,6);
-                    write!(f, "else: ")?;
-                    else_statement.data.display_depth(f, &else_pipes)?;
-                }
-                Ok(())
-            }
-            AstNodeData::While { condition, body, else_statement } => {
-                writeln!(f, "{}", "while".fg(Color::Blue))?;
-                write_pipes(f, pipes)?;
-                write_begin(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                write!(f, "condition: ")?;
-                let condition_full = with_pipe_count(pipes,11);
-                condition.data.display_depth(f, &condition_full)?;
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-                write_pipes(f, pipes)?;
-                if let None = else_statement {
-                    write_end(f)?;
-                } else {
-                    write_split(f)?;
-                }
-                write!(f, "body: ")?;
-                let body_pipes = if let None = else_statement {with_empty_count} else {with_pipe_count}(pipes,6);
-                body.data.display_depth(f, &body_pipes)?;
-                if let Some(else_statement) = else_statement {
-                    write_pipes(f, pipes)?;
-                    write_empty(f)?;
-                    write_pipes(f, pipes)?;
-                    write_end(f)?;
-                    let else_pipes = with_empty_count(pipes,6);
-                    write!(f, "else: ")?;
-                    else_statement.data.display_depth(f, &else_pipes)?;
-                }
-                Ok(())
-            }
-            AstNodeData::For { capture, index_capture, iterable, transformations, body, else_statement } => {
-                let full = with_pipe(pipes);
-                writeln!(f, "{}", "for".fg(Color::Blue))?;
-                write_pipes(f, pipes)?;
-                write_begin(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                write!(f, "capture: ")?;
-                let capture_full = with_pipe_count(pipes,9);
-                capture.data.display_depth(f, &capture_full)?;
-                if let Some(index) = index_capture {
-                    write_pipes(f, pipes)?;
-                    write_empty(f)?;
-                    write_pipes(f, pipes)?;
-                    write_split(f)?;
-                    write!(f, "index: ")?;
-                    let index_full = with_pipe_count(pipes,7);
-                    index.data.display_depth(f, &index_full)?;
-                }
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                write!(f, "iterable: ")?;
-                let iterable_full = with_pipe_count(pipes,10);
-                iterable.data.display_depth(f, &full)?;
-                if !transformations.is_empty() {
-                    write_pipes(f, pipes)?;
-                    write_empty(f)?;
-                    write_pipes(f, pipes)?;
-                    write_split(f)?;
-                    writeln!(f, "transformations")?;
-                    write_list(f,&full,transformations)?;
-                }
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-                write_pipes(f, pipes)?;
-                if let None = else_statement {
-                    write_end(f)?;
-                } else {
-                    write_split(f)?;
-                }
-                write!(f, "body: ")?;
-                let body_pipes = if let None = else_statement {with_empty_count} else {with_pipe_count}(pipes,6);
-                body.data.display_depth(f, &body_pipes)?;
-                if let Some(else_statement) = else_statement {
-                    write_pipes(f, pipes)?;
-                    write_empty(f)?;
-                    write_pipes(f, pipes)?;
-                    write_end(f)?;
-                    let else_pipes = with_empty_count(pipes,6);
-                    write!(f, "else: ")?;
-                    else_statement.data.display_depth(f, &else_pipes)?;
-                }
-                Ok(())
-            }
-            AstNodeData::MatchArm { matches, store, body } => {
-                let full = with_pipe(pipes);
-                writeln!(f, "{}","match arm".fg(Color::Yellow))?;
-                write_pipes(f, pipes)?;
-                write_begin(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                if let Some(store) = store {
-                    write!(f, "store: ")?;
-                    let store_pipes = with_pipe_count(pipes, 7);
-                    store.data.display_depth(f,&store_pipes)?;
-                    write_pipes(f, pipes)?;
-                    write_empty(f)?;
-                    write_pipes(f, pipes)?;
-                    write_split(f)?;
-                }
-                writeln!(f, "matches")?;
-                write_list(f,&full,matches)?;
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-                write_pipes(f, pipes)?;
-                write_end(f)?;
-                write!(f, "body: ")?;
-                let body_pipes = with_empty_count(pipes,6);
-                body.data.display_depth(f,&body_pipes)
-            }
-            AstNodeData::EnumMember { name, tuple, children, value } => {
-                let empty = with_empty(pipes);
-                writeln!(f, "{}","enum member".fg(Color::Yellow))?;
-                write_pipes(f, pipes)?;
-                write_begin(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                writeln!(f, "name: {}", name.fg(Color::Cyan))?;
-                if !children.is_empty() {
-                    let full = with_pipe(pipes);
-                    write_pipes(f, pipes)?;
-                    write_empty(f)?;
-                    write_pipes(f, pipes)?;
-                    write_split(f)?;
-                    writeln!(f, "tuple: {}", tuple.fg(Color::BrightMagenta))?;
-                    write_pipes(f, pipes)?;
-                    write_empty(f)?;
-                    write_pipes(f, pipes)?;
-                    if let None = value {
-                        write_end(f)?;
-                    } else {
-                        write_split(f)?;
-                    }
-                    writeln!(f, "children")?;
-                    write_list(f,if let None = value { &empty } else {&full}, children)?;
-                }
-                if let Some(value) = value {
-                    write_pipes(f, pipes)?;
-                    write_empty(f)?;
-                    write_pipes(f, pipes)?;
-                    write_end(f)?;
-                    write!(f,"value: ")?;
-                    let value_pipes = with_empty_count(pipes,7);
-                    value.data.display_depth(f,&value_pipes)?;
-                }
-                Ok(())
-            }
-            AstNodeData::ArrayType { constant, dimensions, child } => {
-                let empty = with_empty(pipes);
-                let full = with_pipe(pipes);
-                writeln!(f, "{}","array type".fg(Color::Red))?;
-                write_pipes(f, pipes)?;
-                write_begin(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                writeln!(f, "constant: {}", constant.fg(Color::BrightMagenta))?;
-                write_pipes(f, pipes)?;
-                write_begin(f)?;
-                write_empty(f)?;
-                write_split(f)?;
-                writeln!(f, "dimensions")?;
-                write_list(f, &full, dimensions)?;
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-                write_pipes(f, pipes)?;
-                write_end(f)?;
-                child.data.display_depth(f,&empty)
-            }
-            AstNodeData::TypeMemberReference { referee, member } => {
-                writeln!(f, "{}","::".fg(Color::Blue))?;
-                write_pipes(f, pipes)?;
-                write_begin(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                write!(f, "type: ")?;
-                let type_pipes = with_pipe_count(pipes,6);
-                referee.data.display_depth(f,&type_pipes)?;
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-                write_pipes(f, pipes)?;
-                write_end(f)?;
-                writeln!(f, "member: {}", member.fg(Color::Cyan))
-            }
-            AstNodeData::GenericInstanceReference { referee, generic_args } => {
-                let empty = with_empty(pipes);
-                writeln!(f, "{}","::<>".fg(Color::Blue))?;
-                write_pipes(f, pipes)?;
-                write_begin(f)?;
-                write_pipes(f, pipes)?;
-                write_split(f)?;
-                write!(f, "referee: ")?;
-                let referee_pipes = with_pipe_count(pipes,9);
-                referee.data.display_depth(f,&referee_pipes)?;
-                write_pipes(f, pipes)?;
-                write_empty(f)?;
-                write_pipes(f, pipes)?;
-                write_end(f)?;
-                writeln!(f, "arguments")?;
-                write_list(f,&empty,generic_args)
-            }
-        }
-    }
-}
-*/
