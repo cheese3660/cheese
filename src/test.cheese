@@ -1,0 +1,6 @@
+fn fibbo<T: $Integral>(x: T) -> T => if (x < 2) x else fibbo(x-1,x-2);
+
+
+fn with_closure(y: i32) -> i32 => (
+        fn(a: i32, b: i32) -> fn(_: i32, _: i32) -> i32 => fn(c: i32, d:i32) -> i32 => c + d
+    )()(3,y);
