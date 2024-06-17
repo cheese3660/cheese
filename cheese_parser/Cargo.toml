@@ -1,0 +1,18 @@
+[package]
+name = "cheese_parser"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+cheese_lexer = {path = "../cheese_lexer"}
+cheese_diagnostics = {path = "../cheese_diagnostics" }
+cheese_utilities = {path = "../cheese_utilities"}
+bitflags = "2.5.0"
+ariadne = "0.4.1"
+strum = "0.26.2"
+strum_macros = "0.26.4"
+serde_json = "1.0.117"
+num-bigint = "0.4.5"

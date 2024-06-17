@@ -1,0 +1,14 @@
+[package]
+name = "cheese"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+ariadne = {version = "0.4.1", features = ["auto-color"]}
+cheese_lexer = {path = "cheese_lexer"}
+cheese_diagnostics = {path = "cheese_diagnostics"}
+num-bigint = "0.4.5"
+cheese_parser = {path = "cheese_parser"}
+cheese_utilities = {path="cheese_utilities"}
