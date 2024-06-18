@@ -619,8 +619,6 @@ const KEYWORD_COLOR: Color = Color::Blue;
 const METHOD_COLOR: Color = Color::BrightYellow;
 const OTHER_COLOR: Color = Color::Green;
 
-
-
 impl DisplayableTree for AstNodeData {
     fn to_node(&self) -> Box<DisplayNode> {
         match self {

@@ -2,12 +2,13 @@ use ariadne::{Color, Fmt, ColorGenerator};
 use std::{collections::HashMap};
 use std::fmt::{Display, Formatter};
 use std::rc::Rc;
+use ariadne::IndexType::Char;
 use lazy_static::lazy_static;
 use cheese_diagnostics;
 use cheese_diagnostics::{advice, error, ErrorCode, exiting_error, ReportLabel};
 use cheese_diagnostics::ErrorCode::{ExpectedSelf, UnterminatedBlockComment};
 use cheese_diagnostics::locating::{Coordinate, File, FileSpan};
-use crate::TokenType::{AddAssign, Ampersand, Array, Arrow, Assign, Block, Cast, Colon, Comma, ConstantArray, ConstantPointer, ConstantSlice, ConstSelfType, Dash, DivideAssign, Dot, DoubleColon, DoubleDot, DynamicCast, EndOfFile, EqualTo, Exclamation, GreaterThan, GreaterThanEqual, Hash, LeftBrace, LeftBracket, LeftParentheses, LeftShift, LeftShiftAssign, LessThan, LessThanEqual, ModuloAssign, MultiplyAssign, NotEqualTo, Object, Percent, Pipe, Plus, Question, Redefine, ReversedArrow, RightBrace, RightBracket, RightParentheses, RightShift, RightShiftAssign, Semicolon, Slash, Star, StringLiteral, SubtractAssign, ThickArrow, TripleDot, Tuple};
+use crate::TokenType::{AddAssign, Ampersand, Array, Arrow, Assign, Block, Cast, CharacterLiteral, Colon, Comma, ConstantArray, ConstantPointer, ConstantSlice, ConstSelfType, Dash, DivideAssign, Dot, DoubleColon, DoubleDot, DynamicCast, EndOfFile, EqualTo, Exclamation, GreaterThan, GreaterThanEqual, Hash, LeftBrace, LeftBracket, LeftParentheses, LeftShift, LeftShiftAssign, LessThan, LessThanEqual, ModuloAssign, MultiplyAssign, NotEqualTo, Object, Percent, Pipe, Plus, Question, Redefine, ReversedArrow, RightBrace, RightBracket, RightParentheses, RightShift, RightShiftAssign, Semicolon, Slash, Star, StringLiteral, SubtractAssign, ThickArrow, TripleDot, Tuple};
 
 // Important types
 
@@ -543,7 +544,7 @@ impl Lexer {
             }
         }
         Token {
-            token_type: StringLiteral,
+            token_type: CharacterLiteral,
             span: FileSpan {
                 begin: start.clone(),
                 end: self.location(),

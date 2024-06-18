@@ -58,6 +58,14 @@ pub enum ErrorCode {
     ExpectedCaptureName,
     ExpectedCaptureClose,
     ExpectedReturnType,
+    ExpectedIsOrGeneric,
+    ExpectedClosingBrace,
+    ExpectedEquals,
+    ExpectedVariableName,
+    ExpectedOpeningBrace,
+    ExpectedMatchBody,
+    ExpectedCommaOrArrow,
+    ExpectedClosingBracket,
 
 
     // Parser advice

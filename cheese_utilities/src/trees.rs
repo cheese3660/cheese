@@ -195,73 +195,6 @@ impl<T> DisplayableTree for Box<T>
     }
 }
 
-
-// Now time to implement the display functions for display nodes, given the simplified set this should all be a lot simpler for us to do, and then make modifications to as well
-type PipesList = Vec<(usize, bool)>;
-
-fn write_pipes(f: &mut Formatter<'_>, pipes: &PipesList) -> std::fmt::Result {
-    for (space, active) in pipes {
-        if *active {
-            write!(f, "│   ")?;
-        } else {
-            write!(f, "    ")?;
-        }
-        for i in 0..*space {
-            write!(f, " ")?;
-        }
-    }
-    Ok(())
-}
-
-fn write_split(f: &mut Formatter<'_>) -> std::fmt::Result {
-    write!(f, "├─⇥ ")
-}
-
-fn write_end(f: &mut Formatter<'_>) -> std::fmt::Result {
-    write!(f, "╰─⇥ ")
-}
-
-fn write_split_continued(f: &mut Formatter<'_>) -> fmt::Result {
-    write!(f, "├───╮")
-}
-
-fn write_end_continued(f: &mut Formatter<'_>) -> fmt::Result {
-    write!(f, "╰───╮")
-}
-
-fn write_begin(f: &mut Formatter<'_>) -> std::fmt::Result {
-    // writeln!(f, "╿")
-    write_empty(f)
-}
-
-fn write_empty(f: &mut Formatter<'_>) -> std::fmt::Result {
-    writeln!(f, "│")
-}
-
-fn with_empty(pipes: &PipesList) -> PipesList {
-    let mut copy = pipes.clone();
-    copy.push((0, false));
-    copy
-}
-
-fn with_empty_count(pipes: &PipesList, count: usize) -> PipesList {
-    let mut copy = pipes.clone();
-    copy.push((count, false));
-    copy
-}
-
-fn with_pipe(pipes: &PipesList) -> PipesList {
-    let mut copy = pipes.clone();
-    copy.push((0, true));
-    copy
-}
-
-fn with_pipe_count(pipes: &PipesList, count: usize) -> PipesList {
-    let mut copy = pipes.clone();
-    copy.push((count, true));
-    copy
-}
-
 impl Display for DisplayNode {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         for line in self.generate_bounded_lines(None).0 {
@@ -467,14 +400,14 @@ impl DisplayNode {
                         }
                         Some(prefix) => lines[location].with_prefix(match prefix {
                             PrefixType::Split(true) => "├───",
-                            PrefixType::Split(false) => "├─⇥ ",
+                            PrefixType::Split(false) => "├─► ",
                             PrefixType::End(true) => {
                                 past_end = true;
                                 "╰───"
                             }
                             PrefixType::End(false) => {
                                 past_end = true;
-                                "╰─⇥ "
+                                "╰─► "
                             }
                         })
                     };
@@ -521,10 +454,10 @@ impl DisplayNode {
                             lines[location].with_prefix("│   ")
                         },
                         Some(ty) => lines[location].with_prefix(match ty {
-                            PrefixType::Split(_) => "├─⇥ ",
+                            PrefixType::Split(_) => "├─► ",
                             PrefixType::End(_) => {
                                 past_end = true;
-                                "╰─⇥ "
+                                "╰─► "
                             }
                         })
                     };

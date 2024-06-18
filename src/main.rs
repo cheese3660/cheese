@@ -6,13 +6,14 @@ use cheese_utilities::trees::NodeBuilder;
 
 fn main() {
     let file = File::new("test.cheese",include_str!("test.cheese"));
-    let mut lexer = Lexer::create(file,LexerConfiguration::default());
+    let file2 = File::new("hsv.cheese",include_str!("hsv.cheese"));
+    let mut lexer = Lexer::create(file2,LexerConfiguration::default());
     let stream = lexer.lex();
     // for tok in stream.clone() {
     //     println!("{tok}")
     // }
     let mut parser = Parser::new(stream);
-    let result = parser.parse();
+    let result = parser.parse(false);
     println!("{result}");
     // Screw it lets build up a simple display
     // let mut cg = ColorGenerator::new();
