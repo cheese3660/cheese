@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter, Pointer};
+use std::fmt::{Display, format, Formatter, Pointer};
 use std::fs::canonicalize;
 use ariadne::{Color, Fmt};
 use bitflags::bitflags;
@@ -27,6 +27,90 @@ bitflags! {
         const entry    = 0b1000_0000;
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Operator {
+    TupleCall,
+    ArrayCall,
+    ObjectCall,
+    Subscript,
+    UnaryPlus,
+    Add,
+    UnaryMinus,
+    Subtract,
+    Dereference,
+    Not,
+    Multiply,
+    Divide,
+    Modulate,
+    ShiftLeft,
+    ShiftRight,
+    Lesser,
+    Greater,
+    LesserEqual,
+    GreaterEqual,
+    Equal,
+    NotEqual,
+    And,
+    Or,
+    Xor,
+    Assign,
+    AddAssign,
+    SubtractAssign,
+    MultiplyAssign,
+    DivideAssign,
+    ModulateAssign,
+    ShiftLeftAssign,
+    ShiftRightAssign,
+    AndAssign,
+    OrAssign,
+    XorAssign,
+    Unknown
+}
+
+impl Display for Operator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", match self {
+            Operator::TupleCall => "tuple_call",
+            Operator::ArrayCall => "array_call",
+            Operator::ObjectCall => "object_call",
+            Operator::Subscript => "subscript",
+            Operator::UnaryPlus => "unary_plus",
+            Operator::Add => "add",
+            Operator::UnaryMinus => "unary_minus",
+            Operator::Subtract => "subtract",
+            Operator::Dereference => "dereference",
+            Operator::Not => "not",
+            Operator::Multiply => "multiply",
+            Operator::Divide => "divide",
+            Operator::Modulate => "modulate",
+            Operator::ShiftLeft => "shift_left",
+            Operator::ShiftRight => "shift_right",
+            Operator::Lesser => "lesser",
+            Operator::Greater => "greater",
+            Operator::LesserEqual => "lesser_equal",
+            Operator::GreaterEqual => "greater_equal",
+            Operator::Equal => "equal",
+            Operator::NotEqual => "not_equal",
+            Operator::And => "and",
+            Operator::Or => "or",
+            Operator::Xor => "xor",
+            Operator::Assign => "assign",
+            Operator::AddAssign => "add_assign",
+            Operator::SubtractAssign => "subtract_assign",
+            Operator::MultiplyAssign => "multiply_assign",
+            Operator::DivideAssign => "divide_assign",
+            Operator::ModulateAssign => "modulate_assign",
+            Operator::ShiftLeftAssign => "shift_left_assign",
+            Operator::ShiftRightAssign => "shift_right_assign",
+            Operator::AndAssign => "and_assign",
+            Operator::OrAssign => "or_assign",
+            Operator::XorAssign => "xor_assign",
+            Operator::Unknown => "<unknown>"
+        })
+    }
+}
+
 impl Display for DeclarationFlags {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.0.0 == 0 {
@@ -214,6 +298,8 @@ pub enum AstNodeData {
     // ImplicitResult := statement at end of block without semicolon
     ImplicitResult(NodePtr),
     // ImplicitArray := [](~)[subtype]
+    Typeof(NodePtr),
+    // Typeof := typeof type
     ImplicitArray {
         constant: bool,
         subtype: NodePtr,
@@ -490,7 +576,7 @@ pub enum AstNodeData {
 
     Operator {
         flags: DeclarationFlags,
-        operator: String,
+        operator: Operator,
         generic_arguments: Option<NodeList>,
         arguments: NodeList,
         return_type: OptionalNode, // If there is no return type it is deduced :3
@@ -657,7 +743,7 @@ impl DisplayableTree for AstNodeData {
             AstNodeData::SignedIntegerType(size) => NodeBuilder::new_terminal(format!("i{}",size),TYPE_COLOR),
             AstNodeData::UnsignedIntegerType(size) => NodeBuilder::new_terminal(format!("u{}",size),TYPE_COLOR),
             AstNodeData::StringLiteral(s) => NodeBuilder::new_terminal(s.escape_with_quotes("\""),VALUE_COLOR),
-            AstNodeData::FloatLiteral(f) => NodeBuilder::new_terminal(f,VALUE_COLOR),
+            AstNodeData::FloatLiteral(f) => NodeBuilder::new_terminal(format!("{f:?}"),VALUE_COLOR),
             AstNodeData::ImaginaryLiteral(i) => NodeBuilder::new_terminal(format!("{i}I"),VALUE_COLOR),
             AstNodeData::IntegerLiteral(i) => NodeBuilder::new_terminal(i,VALUE_COLOR),
             AstNodeData::NameReference(name) => NodeBuilder::new_terminal(name,NAME_COLOR),
@@ -685,6 +771,7 @@ impl DisplayableTree for AstNodeData {
             AstNodeData::MapTransformation(child) => NodeBuilder::new("|",KEYWORD_COLOR).convert_child(child).build(),
             AstNodeData::Comptime(child) => NodeBuilder::new("comptime",KEYWORD_COLOR).convert_child(child).build(),
             AstNodeData::ImplicitResult(child) => NodeBuilder::new("implicit",OTHER_COLOR).convert_child(child).build(),
+            AstNodeData::Typeof(child) => NodeBuilder::new("typeof",KEYWORD_COLOR).convert_child(child).build(),
             AstNodeData::ImplicitArray { constant, subtype } => NodeBuilder::new(if *constant { "implicit constant array type" } else {"implicit array type"},TYPE_COLOR).convert_child(subtype).build(),
             AstNodeData::Slice { constant, subtype } => NodeBuilder::new(if *constant { "constant slice type" } else {"slice type"},TYPE_COLOR).convert_child(subtype).build(),
             AstNodeData::Reference { constant, subtype } => NodeBuilder::new(if *constant { "constant reference type" } else {"reference type"},TYPE_COLOR).convert_child(subtype).build(),
@@ -874,7 +961,7 @@ impl DisplayableTree for AstNodeData {
             }
             AstNodeData::Operator { flags, operator, generic_arguments, arguments, return_type, body } => {
                 let mut builder = NodeBuilder::new("operator", KEYWORD_COLOR);
-                builder.make_field("operator",operator, METHOD_COLOR).make_field("flags",format!("{flags}"),KEYWORD_COLOR);
+                builder.make_field("operator",format!("{operator}"), METHOD_COLOR).make_field("flags",format!("{flags}"),KEYWORD_COLOR);
                 if let Some(args) = generic_arguments {
                     builder.list_field("generic arguments",args.iter());
                 }

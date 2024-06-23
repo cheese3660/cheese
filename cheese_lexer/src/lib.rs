@@ -165,6 +165,7 @@ pub enum TokenType {
     TypeSelf, // Self
     Operator, // operator
     Concept, // concept
+    Typeof, // typeof
     // Special
     EndOfFile,
     // Lexer error token
@@ -245,6 +246,7 @@ lazy_static! {
         m.insert("yield(", TokenType::BlockYield);
         m.insert("template", TokenType::Template);
         m.insert("concept", TokenType::Concept);
+        m.insert("typeof", TokenType::Typeof);
         return m;
     };
 }
@@ -354,7 +356,7 @@ impl Lexer {
         loop {
             if self.eof() {
                 if self.configuration.error_invalid {
-                    exiting_error(start_location.clone(), UnterminatedBlockComment, "unterminated block comment".to_owned(), None, vec![ReportLabel::new(
+                    exiting_error(start_location.clone(), UnterminatedBlockComment, "unterminated block comment".to_owned(), None::<&str>, vec![ReportLabel::new(
                         FileSpan {
                             begin: start_location.clone(),
                             end: self.location()
@@ -449,7 +451,7 @@ impl Lexer {
             let current = self.peek();
             if current.is_none() || current == Some('\n') {
                 if self.configuration.error_invalid {
-                    error(start.clone(), ErrorCode::UnterminatedStringLiteral, "unterminated string literal".to_string(), None, vec![
+                    error(start.clone(), ErrorCode::UnterminatedStringLiteral, "unterminated string literal".to_string(), None::<&str>, vec![
                         ReportLabel::new(
                             FileSpan {
                                 begin: start.clone(),
@@ -505,7 +507,7 @@ impl Lexer {
             let current = self.peek();
             if current.is_none() || current == Some('\n') {
                 if self.configuration.error_invalid {
-                    error(start.clone(), ErrorCode::UnterminatedCharacterLiteral, "unterminated character literal".to_string(), None, vec![
+                    error(start.clone(), ErrorCode::UnterminatedCharacterLiteral, "unterminated character literal".to_string(), None::<&str>, vec![
                         ReportLabel::new(
                             FileSpan {
                                 begin: start.clone(),
@@ -875,7 +877,7 @@ impl Lexer {
                             self.advance();
                             tokens.push(self.make_token(Redefine, start_location));
                         },
-                        Some('{') => {
+                        Some('(') => {
                             self.advance();
                             tokens.push(self.make_token(Block, start_location));
                         },
@@ -973,6 +975,7 @@ impl Lexer {
                         Some('<') => {
                             self.advance();
                             if let Some('=') = self.peek() {
+                                self.advance();
                                 tokens.push(self.make_token(LeftShiftAssign, start_location));
                             } else {
                                 tokens.push(self.make_token(LeftShift, start_location));
@@ -995,6 +998,7 @@ impl Lexer {
                         Some('>') => {
                             self.advance();
                             if let Some('=') = self.peek() {
+                                self.advance();
                                 tokens.push(self.make_token(RightShiftAssign, start_location));
                             } else {
                                 tokens.push(self.make_token(RightShift, start_location));
@@ -1072,7 +1076,7 @@ impl Lexer {
                         tokens.push(self.number());
                     } else if self.configuration.error_invalid {
                         self.advance();
-                        error(start_location.clone(), ErrorCode::UnexpectedCharacter, format!("unexpected character '{}'", x.fg(Color::Red)), None, vec![
+                        error(start_location.clone(), ErrorCode::UnexpectedCharacter, format!("unexpected character '{}'", x.fg(Color::Red)), None::<&str>, vec![
                             ReportLabel::new(
                                 FileSpan {
                                     begin: start_location,

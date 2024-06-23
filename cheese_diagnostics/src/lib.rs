@@ -66,6 +66,8 @@ pub enum ErrorCode {
     ExpectedMatchBody,
     ExpectedCommaOrArrow,
     ExpectedClosingBracket,
+    ExpectedOperator,
+    ExpectedIndexName,
 
 
     // Parser advice
@@ -93,17 +95,17 @@ pub struct ReportLabel {
 }
 
 impl ReportLabel {
-    pub fn new(span: FileSpan, message: String, color: Option<Color>) -> ReportLabel {
+    pub fn new<T: ToString>(span: FileSpan, message: T, color: Option<Color>) -> ReportLabel {
         ReportLabel {
             span,
-            message,
+            message: message.to_string(),
             color,
         }
     }
 }
 
 
-fn base_report(kind: ReportKind, coordinate: Coordinate, error_code: ErrorCode, message: String, note: Option<String>, labels: Vec<ReportLabel>) {
+fn base_report<T: ToString, U: ToString>(kind: ReportKind, coordinate: Coordinate, error_code: ErrorCode, message: T, note: Option<U>, labels: Vec<ReportLabel>) {
     let file = coordinate.file;
     let mut builder = Report::build(kind, file.filename.as_str(), coordinate.pos);
     builder = builder.with_code(error_code.get_code());
@@ -124,19 +126,19 @@ fn base_report(kind: ReportKind, coordinate: Coordinate, error_code: ErrorCode, 
 }
 
 
-pub fn warn(coordinate: Coordinate, error_code: ErrorCode, message: String, note: Option<String>, labels: Vec<ReportLabel>) {
+pub fn warn<T: ToString, U: ToString>(coordinate: Coordinate, error_code: ErrorCode, message: T, note: Option<U>, labels: Vec<ReportLabel>) {
     base_report(Warning,coordinate,error_code,message,note,labels);
 }
 
-pub fn error(coordinate: Coordinate, error_code: ErrorCode, message: String, note: Option<String>, labels: Vec<ReportLabel>) {
+pub fn error<T: ToString, U: ToString>(coordinate: Coordinate, error_code: ErrorCode, message: T, note: Option<U>, labels: Vec<ReportLabel>) {
     base_report(Error,coordinate,error_code,message,note,labels);
 }
 
-pub fn exiting_error(coordinate: Coordinate, error_code: ErrorCode, message: String, note: Option<String>, labels: Vec<ReportLabel>) {
+pub fn exiting_error<T: ToString, U: ToString>(coordinate: Coordinate, error_code: ErrorCode, message: T, note: Option<U>, labels: Vec<ReportLabel>) {
     error(coordinate,error_code,message,note,labels);
     exit(error_code.get_code() as i32);
 }
 
-pub fn advice(coordinate: Coordinate, error_code: ErrorCode, message: String, note: Option<String>, labels: Vec<ReportLabel>) {
+pub fn advice<T: ToString, U: ToString>(coordinate: Coordinate, error_code: ErrorCode, message: T, note: Option<U>, labels: Vec<ReportLabel>) {
     base_report(Advice,coordinate,error_code,message,note,labels);
 }

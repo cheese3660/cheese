@@ -18,12 +18,14 @@ use ast::AstNodeData::{ErrorNode, Field, Import, Structure};
 use ariadne::{Color, Fmt, ColorGenerator};
 use num_bigint::BigInt;
 use serde_json::json;
-use cheese_diagnostics::ErrorCode::{AbleToSimplifyGenerics, ExpectedArgumentClose, ExpectedArgumentDeclarationOrClose, ExpectedArgumentName, ExpectedBlockName, ExpectedCaptureClose, ExpectedCaptureName, ExpectedCaptureSpecifier, ExpectedClosingBrace, ExpectedClosingBracket, ExpectedClosingDiamond, ExpectedColon, ExpectedCommaOrArrow, ExpectedCommaOrClose, ExpectedEnumId, ExpectedEquals, ExpectedFieldName, ExpectedFunctionInformation, ExpectedIdentifierOrOpeningDiamond, ExpectedImportName, ExpectedImportPath, ExpectedIsOrGeneric, ExpectedMatchBody, ExpectedMatchingParentheses, ExpectedOpeningBrace, ExpectedOpeningParentheses, ExpectedPrimary, ExpectedReturnType, ExpectedSemicolon, ExpectedSliceTypeClose, ExpectedStructureStatement, ExpectedType, ExpectedVariableName, GeneralCompilerError, IncorrectSeparator, InvalidCharacterLiteral, UnexpectedGenerics};
-use cheese_lexer::TokenType::{Arrow, Assign, Block, Cast, Colon, Comma, ConstantArray, ConstantPointer, Else, EndOfFile, GreaterThan, Identifier, Impl, Is, LeftBrace, LeftBracket, LeftParentheses, LessThan, Pipe, RightBrace, RightBracket, RightParentheses, Semicolon, ThickArrow};
+use cheese_diagnostics::ErrorCode::{AbleToSimplifyGenerics, ExpectedArgumentClose, ExpectedArgumentDeclarationOrClose, ExpectedArgumentName, ExpectedBlockName, ExpectedCaptureClose, ExpectedCaptureName, ExpectedCaptureSpecifier, ExpectedClosingBrace, ExpectedClosingBracket, ExpectedClosingDiamond, ExpectedColon, ExpectedCommaOrArrow, ExpectedCommaOrClose, ExpectedEnumId, ExpectedEquals, ExpectedFieldName, ExpectedFunctionInformation, ExpectedIdentifierOrOpeningDiamond, ExpectedImportName, ExpectedImportPath, ExpectedIndexName, ExpectedIsOrGeneric, ExpectedMatchBody, ExpectedMatchingParentheses, ExpectedOpeningBrace, ExpectedOpeningParentheses, ExpectedOperator, ExpectedPrimary, ExpectedReturnType, ExpectedSemicolon, ExpectedSliceTypeClose, ExpectedStructureStatement, ExpectedType, ExpectedVariableName, GeneralCompilerError, IncorrectSeparator, InvalidCharacterLiteral, UnexpectedGenerics};
+use cheese_lexer::TokenType::{Arrow, Assign, Block, Cast, Colon, Comma, ConstantArray, ConstantPointer, Else, EndOfFile, GreaterThan, Identifier, Impl, Is, LeftBrace, LeftBracket, LeftParentheses, LessThan, Pipe, Question, RightBrace, RightBracket, RightParentheses, Semicolon, ThickArrow};
 use cheese_utilities::strings::Escapable;
-use crate::ast::{AstNode, AstNodeData, DeclarationFlags, NodeDict, NodeList, NodePtr, OptionalNode};
-use crate::ast::AstNodeData::{AddressOf, AnonymousFunction, Argument, ArrayCall, ArrayDestructure, ArrayLiteral, ArrayType, Bool, Break, BuiltinReference, Closure, Combine, CompileTimeComplex, CompileTimeFloat, CompileTimeInteger, CompileTimeString, Complex32, Complex64, ConstantReferenceCapture, ConstReferenceImplicitCapture, ConstSelfValue, Continue, CopyCapture, CopyImplicitCapture, Dereference, Destructure, EmptyBreak, EmptyReturn, EnumLiteral, False, FieldLiteral, Float32, Float64, FloatLiteral, Function, FunctionImport, FunctionPrototype, FunctionType, GenericInstanceReference, If, ImaginaryLiteral, ImplicitArray, ImplicitResult, InferredSize, IntegerLiteral, Match, MatchAll, MatchArm, MatchConstraint, MatchRange, MatchValue, NamedBreak, NameReference, NonExhaustive, NoReturn, Not, ObjectCall, ObjectLiteral, Opaque, Reference, ReferenceCapture, ReferenceImplicitCapture, Return, SelfType, SelfValue, SignedIntegerType, SignedSize, Slice, StringLiteral, StructureDestructure, Subscription, True, TupleCall, TupleDestructure, TupleLiteral, Type, TypeDeclaration, TypeMemberReference, UnaryMinus, UnaryPlus, Underscore, UnknownSize, UnsignedIntegerType, UnsignedSize, VariableDeclaration, VariableDefinition, Void, While, Yield};
+use crate::ast::{AstNode, AstNodeData, DeclarationFlags, NodeDict, NodeList, NodePtr, Operator, OptionalNode};
+use crate::ast::AstNodeData::{AddressOf, AnonymousFunction, Argument, ArrayCall, ArrayDestructure, ArrayLiteral, ArrayType, Bool, Break, BuiltinReference, Closure, Combine, CompileTimeComplex, CompileTimeFloat, CompileTimeInteger, CompileTimeString, Complex32, Complex64, ConstantReferenceCapture, ConstReferenceImplicitCapture, ConstSelfValue, Continue, CopyCapture, CopyImplicitCapture, Dereference, Destructure, EmptyBreak, EmptyReturn, EnumLiteral, False, FieldLiteral, FilterTransformation, Float32, Float64, FloatLiteral, For, Function, FunctionImport, FunctionPrototype, FunctionType, GenericInstanceReference, If, ImaginaryLiteral, ImplicitArray, ImplicitResult, InferredSize, IntegerLiteral, MapTransformation, Match, MatchAll, MatchArm, MatchConstraint, MatchRange, MatchValue, NamedBreak, NameReference, NonExhaustive, NoReturn, Not, ObjectCall, ObjectLiteral, Opaque, Reference, ReferenceCapture, ReferenceImplicitCapture, Return, SelfType, SelfValue, SignedIntegerType, SignedSize, Slice, StringLiteral, StructureDestructure, Subscription, True, TupleCall, TupleDestructure, TupleLiteral, Type, TypeDeclaration, TypeMemberReference, Typeof, UnaryMinus, UnaryPlus, Underscore, UnknownSize, UnsignedIntegerType, UnsignedSize, VariableDeclaration, VariableDefinition, Void, While, Yield};
 use crate::utilities::{bin_to_big_int, create_node_from_binop, dec_to_big_int, hex_to_big_int, is_binary_operand_type, is_binary_operation, is_statement_end, oct_to_big_int, precedence};
+
+const NO_NOTE: Option<&str> = None;
 
 
 // Some stuff that needs to be done: generics
@@ -74,11 +76,14 @@ struct ExpectedInformation {
 }
 
 impl ExpectedInformation {
-    fn new(expected_message: String, error_code: ErrorCode, note: Option<String>, labels: Vec<ReportLabel>) -> Self {
+    fn new<T: ToString, U: ToString>(expected_message: T, error_code: ErrorCode, note: Option<U>, labels: Vec<ReportLabel>) -> Self {
         ExpectedInformation {
-            expected_message,
+            expected_message: expected_message.to_string(),
             error_code,
-            note,
+            note: match note {
+                None => None,
+                Some(n) => Some(n.to_string())
+            },
             labels,
         }
     }
@@ -125,30 +130,30 @@ impl Parser {
         }
     }
 
-    pub fn unexpected(&mut self, token: Token, expected: String, error_code: ErrorCode, note: Option<String>, mut labels: Vec<ReportLabel>) -> NodePtr {
+    pub fn unexpected<T: ToString, U: ToString>(&mut self, token: Token, expected: T, error_code: ErrorCode, note: Option<U>, mut labels: Vec<ReportLabel>) -> NodePtr {
         let clone = token;
         if clone.token_type == TokenType::EndOfFile {
-            self.raise(clone.span.clone(), clone.span.begin, error_code, format!("unexpected {}. expected: {}", "EOF".fg(Color::Red), expected), note, labels)
+            self.raise(clone.span.clone(), clone.span.begin, error_code, format!("unexpected {}. expected: {}", "EOF".fg(Color::Red), expected.to_string()), note, labels)
         } else {
             labels.push(ReportLabel::new(clone.span.clone(), format!("Unexpected '{}' found here", clone.value.clone().fg(Color::Red)), Some(Color::Red)));
-            self.raise(clone.span.clone(), clone.span.begin, error_code, format!("unexpected token '{}'. expected: {}", clone.value.clone().fg(Color::Red), expected), note, labels)
+            self.raise(clone.span.clone(), clone.span.begin, error_code, format!("unexpected token '{}'. expected: {}", clone.value.clone().fg(Color::Red), expected.to_string()), note, labels)
         }
     }
 
-    pub fn raise(&mut self, span: FileSpan, coordinate: Coordinate, error_code: ErrorCode, message: String, note: Option<String>, labels: Vec<ReportLabel>) -> NodePtr {
+    pub fn raise<T: ToString, U: ToString>(&mut self, span: FileSpan, coordinate: Coordinate, error_code: ErrorCode, message: T, note: Option<U>, labels: Vec<ReportLabel>) -> NodePtr {
         self.all_raised_errors.push(RaisedError {
             error_code,
-            message: message.clone(),
+            message: message.to_string(),
             location: coordinate.clone(),
         });
 
-        error(coordinate.clone(), error_code, message.clone(), note, labels);
+        error(coordinate.clone(), error_code, message.to_string(), note, labels);
 
         return Box::new(AstNode {
             span,
             data: ErrorNode {
                 error_code,
-                message,
+                message: message.to_string(),
             },
         });
     }
@@ -159,9 +164,9 @@ impl Parser {
         if exit_on_err {
             if self.all_raised_errors.len() == 1 {
                 let first = self.all_raised_errors[0].clone();
-                exiting_error(first.clone().location, first.error_code, first.message, None, vec![]);
+                exiting_error(first.clone().location, first.error_code, first.message, NO_NOTE, vec![]);
             } else if self.all_raised_errors.len() > 1 {
-                exiting_error(location, GeneralCompilerError, "multiple syntax errors detected".to_string(), None, vec![]);
+                exiting_error(location, GeneralCompilerError, "multiple syntax errors detected".to_string(), NO_NOTE, vec![]);
             }
         }
 
@@ -183,10 +188,10 @@ impl Parser {
                         front.span.clone(),
                         front.span.clone().begin,
                         IncorrectSeparator,
-                        "expected a semicolon to separate 2 non field declarations".to_string(),
-                        None,
+                        "expected a semicolon to separate 2 non field declarations",
+                        NO_NOTE,
                         if let Some(s) = last_span.clone() {
-                            vec![ReportLabel::new(s, "non field declaration found here".to_string(), Some(Color::Red)), ReportLabel::new(front.span.clone(), format!("consider replacing this '{}' with a '{}', or removing it.", ','.fg(Color::Yellow), ';'.fg(Color::Green)), Some(Color::Yellow))]
+                            vec![ReportLabel::new(s, "non field declaration found here", Some(Color::Red)), ReportLabel::new(front.span.clone(), format!("consider replacing this '{}' with a '{}', or removing it.", ','.fg(Color::Yellow), ';'.fg(Color::Green)), Some(Color::Yellow))]
                         } else {
                             vec![ReportLabel::new(front.span.clone(), format!("consider replacing this '{}' with a '{}', or removing it.", ','.fg(Color::Yellow), ';'.fg(Color::Green)), Some(Color::Yellow))]
                         },
@@ -235,6 +240,7 @@ impl Parser {
             TokenType::Type => self.parse_type_alias(),
             TokenType::Let => self.parse_let(),
             TokenType::Def => self.parse_definition(),
+            TokenType::Operator => self.parse_operator(),
             Identifier | TokenType::Underscore => self.parse_field(),
             _ => {
                 let result = self.unexpected(front.clone(), format!(
@@ -247,7 +253,7 @@ impl Parser {
                     "comptime".fg(cg.next()),
                     "comptime conditional".fg(cg.next()),
                     "field".fg(cg.next())
-                ), ExpectedStructureStatement, None, vec![]);
+                ), ExpectedStructureStatement, NO_NOTE, vec![]);
                 self.eat_any(); // for error recovery
                 result
             }
@@ -315,7 +321,7 @@ impl Parser {
             return self.raise(FileSpan {
                 begin: start.clone(),
                 end: end.clone(),
-            }, start.clone(), ExpectedImportPath, format!("missing import path following '{}' token", "import".fg(Color::Red)), None, vec![
+            }, start.clone(), ExpectedImportPath, format!("missing import path following '{}' token", "import".fg(Color::Red)), NO_NOTE, vec![
                 ReportLabel::new(FileSpan {
                     begin: start.clone(),
                     end: end.clone(),
@@ -333,7 +339,7 @@ impl Parser {
                 Identifier,
                 |_| ExpectedInformation::new(format!("an identifier following an '{}' for an {} statement", '@'.fg(Color::Green), "import".fg(Color::Blue)),
                                             ExpectedImportName,
-                                            None,
+                                            NO_NOTE,
                                             vec![
                                                 ReportLabel::new(
                                                     start_span.clone(),
@@ -389,7 +395,7 @@ impl Parser {
                 ident_token,
                 format!("'{}' or an identifier for an argument name", '_'.fg(Color::Cyan)),
                 ExpectedArgumentName,
-                None,
+                NO_NOTE,
                 vec![],
             )
         }
@@ -397,7 +403,7 @@ impl Parser {
             Colon,
             |_| ExpectedInformation::new(format!("'{}' expected after argument name", ':'.fg(Color::Green)),
                                         ExpectedColon,
-                                        None,
+                                         NO_NOTE,
                                         vec![
                                             ReportLabel::new(
                                                 span_begin.clone(),
@@ -481,7 +487,7 @@ impl Parser {
                             name.fg(name_color)
                         ),
                         ExpectedArgumentDeclarationOrClose,
-                        None,
+                        NO_NOTE,
                         vec![
                             ReportLabel::new(
                                 function_begin.clone(),
@@ -542,7 +548,7 @@ impl Parser {
             Identifier,
             |_| ExpectedInformation::new(format!("an identifier following an '{}' for a function declaration ", "fn".fg(Color::Blue)),
                                         ExpectedImportName,
-                                        Some("Cheese does not support anonymous functions as top level statements".to_string()),
+                                        Some("Cheese does not support anonymous functions as top level statements"),
                                         vec![
                                             ReportLabel::new(
                                                 front_span.clone(),
@@ -569,7 +575,7 @@ impl Parser {
                 peek.clone(),
                 format!("'{}' to start argument list for function '{}'", '('.fg(Color::Green), name.as_str().fg(Color::Yellow)),
                 ExpectedOpeningParentheses,
-                None,
+                NO_NOTE,
                 vec![
                     ReportLabel::new(
                         front_span.clone(),
@@ -595,7 +601,7 @@ impl Parser {
                 self.eat_any();
                 let body = self.parse_expression();
                 let end_loc = self.peek_ref().span.end.clone();
-                let err = self.eat(Semicolon, |_| ExpectedInformation::new(format!("expected '{}' following expression bodied function '{}'", ';'.fg(Color::Green), name.as_str().fg(Color::Yellow)), ExpectedSemicolon, None, vec![
+                let err = self.eat(Semicolon, |_| ExpectedInformation::new(format!("expected '{}' following expression bodied function '{}'", ';'.fg(Color::Green), name.as_str().fg(Color::Yellow)), ExpectedSemicolon, NO_NOTE, vec![
                     ReportLabel::new(
                         front_span.clone(),
                         format!("function declaration for '{}' begins here", name.as_str().fg(Color::Yellow)),
@@ -643,7 +649,7 @@ impl Parser {
                         return self.raise(FileSpan {
                             begin: front_span.begin.clone(),
                             end: loc.end.clone(),
-                        }, front_span.begin.clone(), UnexpectedGenerics, format!("Unexpected generic arguments for function prototype '{}'", name.as_str().fg(Color::Yellow)), Some("Function prototypes cannot have generic arguments in Cheese".to_string()), vec![
+                        }, front_span.begin.clone(), UnexpectedGenerics, format!("Unexpected generic arguments for function prototype '{}'", name.as_str().fg(Color::Yellow)), Some("Function prototypes cannot have generic arguments in Cheese"), vec![
                             ReportLabel::new(
                                 front_span.clone(),
                                 format!("function declaration for '{}' begins here", name.as_str().fg(Color::Yellow)),
@@ -653,7 +659,7 @@ impl Parser {
                     None => {}
                 }
 
-                let err = self.eat(Semicolon, |_| ExpectedInformation::new(format!("expected '{}' following function prototype '{}'", ';'.fg(Color::Green), name.as_str().fg(Color::Yellow)), ExpectedSemicolon, None, vec![
+                let err = self.eat(Semicolon, |_| ExpectedInformation::new(format!("expected '{}' following function prototype '{}'", ';'.fg(Color::Green), name.as_str().fg(Color::Yellow)), ExpectedSemicolon, NO_NOTE, vec![
                     ReportLabel::new(
                         front_span.clone(),
                         format!("function declaration for '{}' begins here", name.as_str().fg(Color::Yellow)),
@@ -685,7 +691,7 @@ impl Parser {
                         return self.raise(FileSpan {
                             begin: front_span.begin.clone(),
                             end: loc.end.clone(),
-                        }, front_span.begin.clone(), UnexpectedGenerics, format!("Unexpected generic arguments for function import '{}'", name.as_str().fg(Color::Yellow)), Some("Function imports cannot have generic arguments in Cheese".to_string()), vec![
+                        }, front_span.begin.clone(), UnexpectedGenerics, format!("Unexpected generic arguments for function import '{}'", name.as_str().fg(Color::Yellow)), Some("Function imports cannot have generic arguments in Cheese"), vec![
                             ReportLabel::new(
                                 front_span.clone(),
                                 format!("function declaration for '{}' begins here", name.as_str().fg(Color::Yellow)),
@@ -702,7 +708,7 @@ impl Parser {
                     if let Some(err) = self.eat(RightParentheses,|_|ExpectedInformation::new(
                         format!("'{}' to match '{}' for fn import library",')'.fg(Color::Green),'('.fg(Color::Green)),
                         ExpectedMatchingParentheses,
-                        None,
+                        NO_NOTE,
                         vec![
                             ReportLabel::new(
                                 loc.clone(),
@@ -714,7 +720,7 @@ impl Parser {
                         return err;
                     }
                 }
-                let err = self.eat(Semicolon, |_| ExpectedInformation::new(format!("expected '{}' following function impot '{}'", ';'.fg(Color::Green), name.as_str().fg(Color::Yellow)), ExpectedSemicolon, None, vec![
+                let err = self.eat(Semicolon, |_| ExpectedInformation::new(format!("expected '{}' following function impot '{}'", ';'.fg(Color::Green), name.as_str().fg(Color::Yellow)), ExpectedSemicolon, NO_NOTE, vec![
                     ReportLabel::new(
                         front_span.clone(),
                         format!("function declaration for '{}' begins here", name.as_str().fg(Color::Yellow)),
@@ -743,11 +749,287 @@ impl Parser {
                 peek.clone(),
                 format!("'{}', '{}', '{}', or '{}' following the function declaration for '{}'", "=>".fg(cg.next()), "{".fg(cg.next()), "import".fg(cg.next()), "prototype".fg(cg.next()), name.as_str().fg(Color::Yellow)),
                 ExpectedFunctionInformation,
-                None,
+                NO_NOTE,
                 vec![
                     ReportLabel::new(
                         front_span.clone(),
                         format!("function declaration for '{}' begins here", name.as_str().fg(Color::Yellow)),
+                        Some(Color::Yellow),
+                    )
+                ],
+            )
+        }
+    }
+
+    fn get_operator_type(&mut self) -> Operator {
+        let front = self.peek_ref();
+        let loc = front.span.clone();
+        match front.token_type {
+            LeftParentheses => {
+                self.eat_any();
+                _ = self.eat(RightParentheses,|_|ExpectedInformation::new(
+                    format!("a '{}' to close the '{}' for the tuple call operator overload",')'.fg(Color::Green),'('.fg(Color::Green)),
+                    ExpectedMatchingParentheses,
+                    NO_NOTE,
+                    vec![
+                        ReportLabel::new(loc.clone(),format!("'{}' found here", '('.fg(Color::Green)),Some(Color::Green))
+                    ]
+                ));
+                Operator::TupleCall
+            },
+            LeftBracket => {
+                self.eat_any();
+                _ = self.eat(RightBracket,|_|ExpectedInformation::new(
+                    format!("a '{}' to close the '{}' for the array call operator overload",']'.fg(Color::Green),'['.fg(Color::Green)),
+                    ExpectedClosingBracket,
+                    NO_NOTE,
+                    vec![
+                        ReportLabel::new(loc.clone(),format!("'{}' found here", '['.fg(Color::Green)),Some(Color::Green))
+                    ]
+                ));
+                Operator::ArrayCall
+            },
+            LeftBrace => {
+                self.eat_any();
+                _ = self.eat(RightBrace,|_|ExpectedInformation::new(
+                    format!("a '{}' to close the '{}' for the object call operator overload",'}'.fg(Color::Green),'{'.fg(Color::Green)),
+                    ExpectedClosingBrace,
+                    NO_NOTE,
+                    vec![
+                        ReportLabel::new(loc.clone(),format!("'{}' found here", '{'.fg(Color::Green)),Some(Color::Green))
+                    ]
+                ));
+                Operator::ObjectCall
+            },
+            TokenType::Dot => {
+                self.eat_any();
+                Operator::Subscript
+            },
+            TokenType::Plus => {
+                self.eat_any();
+                if self.peek_ref().token_type == Question {
+                    self.eat_any();
+                    Operator::UnaryPlus
+                } else {
+                    Operator::Add
+                }
+            },
+            TokenType::Dash => {
+                self.eat_any();
+                if self.peek_ref().token_type == Question {
+                    self.eat_any();
+                    Operator::UnaryMinus
+                } else {
+                    Operator::Subtract
+                }
+            },
+            TokenType::Dereference => {
+                self.eat_any();
+                Operator::Dereference
+            },
+            TokenType::Not => {
+                self.eat_any();
+                Operator::Not
+            },
+            TokenType::Star => {
+                self.eat_any();
+                Operator::Multiply
+            },
+            TokenType::Slash => {
+                self.eat_any();
+                Operator::Divide
+            },
+            TokenType::Percent => {
+                self.eat_any();
+                Operator::Modulate
+            },
+            TokenType::LeftShift => {
+                self.eat_any();
+                Operator::ShiftLeft
+            },
+            TokenType::RightShift => {
+                self.eat_any();
+                Operator::ShiftRight
+            },
+            LessThan => {
+                self.eat_any();
+                Operator::Lesser
+            },
+            GreaterThan => {
+                self.eat_any();
+                Operator::Greater
+            },
+            TokenType::LessThanEqual => {
+                self.eat_any();
+                Operator::LesserEqual
+            },
+            TokenType::GreaterThanEqual => {
+                self.eat_any();
+                Operator::GreaterEqual
+            },
+            TokenType::EqualTo => {
+                self.eat_any();
+                Operator::Equal
+            },
+            TokenType::NotEqualTo => {
+                self.eat_any();
+                Operator::NotEqual
+            },
+            TokenType::And => {
+                self.eat_any();
+                Operator::And
+            },
+            TokenType::Or => {
+                self.eat_any();
+                Operator::Or
+            },
+            TokenType::Xor => {
+                self.eat_any();
+                Operator::Xor
+            },
+            TokenType::Assign => {
+                self.eat_any();
+                Operator::Assign
+            },
+            TokenType::AddAssign => {
+                self.eat_any();
+                Operator::AddAssign
+            },
+            TokenType::SubtractAssign => {
+                self.eat_any();
+                Operator::SubtractAssign
+            },
+            TokenType::MultiplyAssign => {
+                self.eat_any();
+                Operator::MultiplyAssign
+            },
+            TokenType::DivideAssign => {
+                self.eat_any();
+                Operator::DivideAssign
+            },
+            TokenType::ModuloAssign => {
+                self.eat_any();
+                Operator::ModulateAssign
+            },
+            TokenType::LeftShiftAssign => {
+                self.eat_any();
+                Operator::ShiftLeftAssign
+            },
+            TokenType::RightShiftAssign => {
+                self.eat_any();
+                Operator::ShiftRightAssign
+            },
+            TokenType::AndAssign => {
+                self.eat_any();
+                Operator::AndAssign
+            },
+            TokenType::OrAssign => {
+                self.eat_any();
+                Operator::OrAssign
+            },
+            TokenType::XorAssign => {
+                self.eat_any();
+                Operator::XorAssign
+            }
+            _ => {
+                _ = self.unexpected(front.clone(),"an operator for an operator overload", ExpectedOperator, NO_NOTE, vec![]);
+                Operator::Unknown
+            }
+        }
+    }
+
+    fn parse_operator(&mut self) -> NodePtr {
+        let front_ref = self.peek_ref();
+        let front_span = front_ref.span.clone();
+        self.eat_any();
+        let ty = self.get_operator_type();
+        let mut generic_arguments = None;
+        let mut peek = self.peek_ref();
+        let n = format!("{ty}");
+        if peek.token_type == LessThan {
+            generic_arguments = Some(self.parse_arguments(GreaterThan, front_span.clone(), "operator", n.as_ref(), "generic ", ">", Color::Yellow));
+            peek = self.peek_ref();
+        }
+        if peek.token_type != LeftParentheses {
+            return self.unexpected(
+                peek.clone(),
+                format!("'{}' to start argument list for operator '{}'", '('.fg(Color::Green), ty.fg(Color::Yellow)),
+                ExpectedOpeningParentheses,
+                NO_NOTE,
+                vec![
+                    ReportLabel::new(
+                        front_span.clone(),
+                        format!("operator declaration for '{}' begins here", ty.fg(Color::Yellow)),
+                        Some(Color::Yellow),
+                    )
+                ],
+            );
+        }
+        let arguments = self.parse_arguments(RightParentheses, front_span.clone(), "operator", n.as_ref(), "", ")", Color::Yellow);
+        // We should parse flags before the return type, as we might be returning a function type that could have flags
+        let flags = self.parse_flags();
+        let mut return_type = None;
+        peek = self.peek_ref();
+        if peek.token_type == Arrow {
+            self.eat_any();
+            return_type = Some(self.parse_type(true));
+        }
+        peek = self.peek_ref();
+        let mut cg = ColorGenerator::new();
+        match peek.token_type {
+            TokenType::ThickArrow => {
+                self.eat_any();
+                let body = self.parse_expression();
+                let end_loc = self.peek_ref().span.end.clone();
+                let err = self.eat(Semicolon, |_| ExpectedInformation::new(format!("expected '{}' following expression bodied operator '{}'", ';'.fg(Color::Green), ty.fg(Color::Yellow)), ExpectedSemicolon, NO_NOTE, vec![
+                    ReportLabel::new(
+                        front_span.clone(),
+                        format!("operator declaration for '{}' begins here", ty.fg(Color::Yellow)),
+                        Some(Color::Yellow),
+                    ),
+                    ReportLabel::new(
+                        body.span.clone(),
+                        format!("expected '{}' after this expression", ';'.fg(Color::Green)),
+                        Some(Color::Green),
+                    ),
+                ]));
+                err.unwrap_or_else(|| AstNode::new(
+                    FileSpan {
+                        begin: front_span.begin,
+                        end: end_loc,
+                    },
+                    AstNodeData::Operator {
+                        flags,
+                        operator: ty,
+                        generic_arguments,
+                        arguments,
+                        return_type,
+                        body,
+                    }))
+            }
+            TokenType::LeftBrace => {
+                let body = self.parse_expression_block();
+                AstNode::new(FileSpan {
+                    begin: front_span.begin,
+                    end: body.span.end.clone(),
+                }, AstNodeData::Operator {
+                    flags,
+                    operator: ty,
+                    generic_arguments,
+                    arguments,
+                    return_type,
+                    body,
+                })
+            }
+            _ => self.unexpected(
+                peek.clone(),
+                format!("'{}', '{}' following the operator declaration for '{}'", "=>".fg(cg.next()), "{".fg(cg.next()), ty.fg(Color::Yellow)),
+                ExpectedFunctionInformation,
+                NO_NOTE,
+                vec![
+                    ReportLabel::new(
+                        front_span.clone(),
+                        format!("function declaration for '{}' begins here", ty.fg(Color::Yellow)),
                         Some(Color::Yellow),
                     )
                 ],
@@ -766,7 +1048,7 @@ impl Parser {
             |_| ExpectedInformation::new(
                 format!("an identifier following '{}' for a type alias declaration ", "type".fg(Color::Blue)),
                 ExpectedImportName,
-                None,
+                NO_NOTE,
                 vec![
                     ReportLabel::new(
                         location.clone(),
@@ -790,7 +1072,7 @@ impl Parser {
         let err = self.eat(Is,|_|ExpectedInformation::new(
             format!("'{}' or '{}' following the identifier for the type alias {}",'<'.fg(Color::Green),"is".fg(Color::Blue),name.as_str().fg(Color::Red)),
             ExpectedIsOrGeneric,
-            None,
+            NO_NOTE,
             vec![
                 ReportLabel::new(
                     location.clone(),
@@ -806,7 +1088,7 @@ impl Parser {
         self.eat(Semicolon,|_|ExpectedInformation::new(
             format!("'{}' following type declaration for {}",';'.fg(Color::Green),name.as_str().fg(Color::Red)),
             ExpectedSemicolon,
-            None,
+            NO_NOTE,
             vec![
                 ReportLabel::new(
                     location.clone(),
@@ -839,7 +1121,7 @@ impl Parser {
         } {
             let arg = self.parse_generic_arg();
             if self.peek_ref().token_type != Comma && self.peek_ref().token_type != GreaterThan {
-                _ = self.unexpected(self.peek(), format!("'{}' or '{}' after generic argument", ','.fg(Color::Green), '>'.fg(Color::Green)), ExpectedCommaOrClose, None, vec![
+                _ = self.unexpected(self.peek(), format!("'{}' or '{}' after generic argument", ','.fg(Color::Green), '>'.fg(Color::Green)), ExpectedCommaOrClose, NO_NOTE, vec![
                     ReportLabel::new(arg.span.clone(), format!("perhaps add a '{}' or '{}' after this argument", ','.fg(Color::Green), '>'.fg(Color::Green)), Some(Color::Green))
                 ]);
                 while match self.peek_ref().token_type {
@@ -856,6 +1138,48 @@ impl Parser {
         result
     }
 
+    fn parse_type_argument_list(&mut self) -> NodeList {
+        let mut result = vec![];
+        let location = self.peek_ref().span.clone();
+        self.eat_any();
+        while match self.peek_ref().token_type {
+            RightParentheses | EndOfFile => false,
+            _ => true
+        } {
+            let arg = self.parse_generic_arg();
+            if self.peek_ref().token_type != Comma && self.peek_ref().token_type != RightParentheses {
+                _ = self.unexpected(self.peek(), format!("'{}' or '{}' after argument for function type", ','.fg(Color::Green), ')'.fg(Color::Green)), ExpectedCommaOrClose, NO_NOTE, vec![
+                    ReportLabel::new(arg.span.clone(), format!("perhaps add a '{}' or '{}' after this argument", ','.fg(Color::Green), '>'.fg(Color::Green)), Some(Color::Green))
+                ]);
+                while match self.peek_ref().token_type {
+                    Comma | RightParentheses | EndOfFile => false,
+                    _ => true
+                } {
+                    self.eat_any();
+                }
+            } else if self.peek_ref().token_type == Comma {
+                self.eat_any();
+            }
+            result.push(arg);
+        }
+        let err = self.eat(RightParentheses,|_|ExpectedInformation::new(
+            format!("'{}' to close '{}' for argument type list",'('.fg(Color::Green),')'.fg(Color::Green)),
+            ExpectedMatchingParentheses,
+            NO_NOTE,
+            vec![
+                ReportLabel::new(
+                    location.clone(),
+                    format!("'{}' opens here",'('.fg(Color::Green)),
+                    Some(Color::Green)
+                )
+            ]
+        ));
+        if let Some(err) = err {
+            result.push(err)
+        }
+        result
+    }
+
     fn parse_tuple_argument_list(&mut self) -> NodeList {
         let mut result = vec![];
         self.eat_any();
@@ -865,7 +1189,7 @@ impl Parser {
         } {
             let arg = self.parse_generic_arg();
             if self.peek_ref().token_type != Comma && self.peek_ref().token_type != RightParentheses {
-                _ = self.unexpected(self.peek(), format!("'{}' or '{}' after tuple field", ','.fg(Color::Green), ')'.fg(Color::Green)), ExpectedCommaOrClose, None, vec![
+                _ = self.unexpected(self.peek(), format!("'{}' or '{}' after tuple field", ','.fg(Color::Green), ')'.fg(Color::Green)), ExpectedCommaOrClose, NO_NOTE, vec![
                     ReportLabel::new(arg.span.clone(), format!("perhaps add a '{}' or '{}' after this field", ','.fg(Color::Green), ')'.fg(Color::Green)), Some(Color::Green))
                 ]);
                 while match self.peek_ref().token_type {
@@ -916,11 +1240,11 @@ impl Parser {
                                 GreaterThan,
                                 |_| ExpectedInformation::new(format!("a '{}' to end a generic instance argument list", '>'.fg(Color::Green)),
                                                             ExpectedClosingDiamond,
-                                                            None,
+                                                            NO_NOTE,
                                                             vec![
                                                                 ReportLabel::new(
                                                                     loc2.clone(),
-                                                                    "generic instance argument list begins here".to_string(),
+                                                                    "generic instance argument list begins here",
                                                                     Some(Color::Green),
                                                                 )
                                                             ],
@@ -947,7 +1271,7 @@ impl Parser {
                                 member: name,
                             })
                         }
-                        _ => return self.unexpected(peek2.clone(), format!("an identifier or '{}'", '<'.fg(Color::Green)), ExpectedIdentifierOrOpeningDiamond, None, vec![
+                        _ => return self.unexpected(peek2.clone(), format!("an identifier or '{}'", '<'.fg(Color::Green)), ExpectedIdentifierOrOpeningDiamond, NO_NOTE, vec![
                             ReportLabel::new(
                                 loc,
                                 format!("expected identifier or '{}' after this '{}'", '<'.fg(Color::Green), "::".fg(Color::Green)),
@@ -967,11 +1291,11 @@ impl Parser {
                         GreaterThan,
                         |_| ExpectedInformation::new(format!("a '{}' to end a generic instance argument list", '>'.fg(Color::Green)),
                                                     ExpectedClosingDiamond,
-                                                    None,
+                                                     NO_NOTE,
                                                     vec![
                                                         ReportLabel::new(
                                                             loc.clone(),
-                                                            "generic instance argument list begins here".to_string(),
+                                                            "generic instance argument list begins here",
                                                             Some(Color::Green),
                                                         )
                                                     ],
@@ -1069,12 +1393,12 @@ impl Parser {
         self.eat_any();
         match self.parse_type_common(start.clone(),start_loc,start_location) {
             Some(v) => v,
-            _ => self.unexpected(start.clone(), "a type".to_string(), ExpectedType, None, vec![])
+            _ => self.unexpected(start.clone(), "a type", ExpectedType, NO_NOTE, vec![])
         }
     }
 
     fn parse_function_type(&mut self) -> NodePtr {
-        let (location, arguments, return_type, flags) = self.parse_function_begin(false);
+        let (location, arguments, return_type, flags) = self.parse_function_begin(true);
         let return_type = return_type.unwrap();
         AstNode::new(location.expanded(&return_type.span), FunctionType {
             arguments,
@@ -1119,11 +1443,11 @@ impl Parser {
             let err = self.eat(RightParentheses,|_|ExpectedInformation::new(
                 format!("expected '{}' to match '{}' for tuple type", '('.fg(Color::Green), ')'.fg(Color::Green)),
                 ExpectedMatchingParentheses,
-                None,
+                NO_NOTE,
                 vec![
                     ReportLabel::new(
                         start_location.clone(),
-                        "tuple type begins here".to_string(),
+                        "tuple type begins here",
                         Some(Color::Red)
                     ),
                     ReportLabel::new(
@@ -1151,10 +1475,10 @@ impl Parser {
                             front.span.clone(),
                             front.span.clone().begin,
                             IncorrectSeparator,
-                            "expected a semicolon to separate 2 non field declarations".to_string(),
-                            None,
+                            "expected a semicolon to separate 2 non field declarations",
+                            NO_NOTE,
                             if let Some(s) = last_span.clone() {
-                                vec![ReportLabel::new(s, "non field declaration found here".to_string(), Some(Color::Red)), ReportLabel::new(front.span.clone(), format!("consider replacing this '{}' with a '{}', or removing it.", ','.fg(Color::Yellow), ';'.fg(Color::Green)), Some(Color::Yellow))]
+                                vec![ReportLabel::new(s, "non field declaration found here", Some(Color::Red)), ReportLabel::new(front.span.clone(), format!("consider replacing this '{}' with a '{}', or removing it.", ','.fg(Color::Yellow), ';'.fg(Color::Green)), Some(Color::Yellow))]
                             } else {
                                 vec![ReportLabel::new(front.span.clone(), format!("consider replacing this '{}' with a '{}', or removing it.", ','.fg(Color::Yellow), ';'.fg(Color::Green)), Some(Color::Yellow))]
                             },
@@ -1180,11 +1504,11 @@ impl Parser {
             let err = self.eat(RightBrace,|_|ExpectedInformation::new(
                 format!("expected '{}' to close '{}' for structure type", '{'.fg(Color::Green), '}'.fg(Color::Green)),
                 ExpectedMatchingParentheses,
-                None,
+                NO_NOTE,
                 vec![
                     ReportLabel::new(
                         start_location.clone(),
-                        "structure type begins here".to_string(),
+                        "structure type begins here",
                         Some(Color::Red)
                     ),
                     ReportLabel::new(
@@ -1219,10 +1543,10 @@ impl Parser {
                 RightBracket | TokenType::ConstantArray | Comma => false,
                 _ => true
             } {
-                _ = self.unexpected(self.peek(),format!("a '{}', '{}' or '{}' following a rank in an array type","]~".fg(Color::Green),']'.fg(Color::Green),','.fg(Color::Green)),ExpectedCommaOrClose,None,vec![
+                _ = self.unexpected(self.peek(),format!("a '{}', '{}' or '{}' following a rank in an array type","]~".fg(Color::Green),']'.fg(Color::Green),','.fg(Color::Green)),ExpectedCommaOrClose,NO_NOTE,vec![
                     ReportLabel::new(
                         start_location.clone(),
-                        "array type begins here".to_string(),
+                        "array type begins here",
                         Some(Color::Blue)
                     ),
                     ReportLabel::new(
@@ -1237,10 +1561,10 @@ impl Parser {
             dimensions.push(argument);
         }
         if self.peek_ref().token_type == EndOfFile {
-            return self.unexpected(self.peek(),format!("a '{}' or '{}' to close an array type","]~".fg(Color::Green),']'.fg(Color::Green)),ExpectedClosingBracket,None,vec![
+            return self.unexpected(self.peek(),format!("a '{}' or '{}' to close an array type","]~".fg(Color::Green),']'.fg(Color::Green)),ExpectedClosingBracket,NO_NOTE,vec![
                 ReportLabel::new(
                     start_location.clone(),
-                    "array type begins here".to_string(),
+                    "array type begins here",
                     Some(Color::Blue)
                 ),
             ]);
@@ -1285,7 +1609,7 @@ impl Parser {
                 peek.clone(),
                 format!("'{}' or '{}' to denote a slice type", '>'.fg(Color::Green), ">~".fg(Color::Green)),
                 ExpectedSliceTypeClose,
-                None,
+                NO_NOTE,
                 vec![
                     ReportLabel::new(
                         start_location,
@@ -1342,11 +1666,11 @@ impl Parser {
                                 GreaterThan,
                                 |_| ExpectedInformation::new(format!("a '{}' to end a generic instance argument list", '>'.fg(Color::Green)),
                                                             ExpectedClosingDiamond,
-                                                            None,
+                                                            NO_NOTE,
                                                             vec![
                                                                 ReportLabel::new(
                                                                     loc2.clone(),
-                                                                    "generic instance argument list begins here".to_string(),
+                                                                    "generic instance argument list begins here",
                                                                     Some(Color::Green),
                                                                 )
                                                             ],
@@ -1373,7 +1697,7 @@ impl Parser {
                                 member: name,
                             })
                         }
-                        _ => return self.unexpected(peek2.clone(), format!("an identifier or '{}'", '<'.fg(Color::Green)), ExpectedIdentifierOrOpeningDiamond, None, vec![
+                        _ => return self.unexpected(peek2.clone(), format!("an identifier or '{}'", '<'.fg(Color::Green)), ExpectedIdentifierOrOpeningDiamond, NO_NOTE, vec![
                             ReportLabel::new(
                                 loc,
                                 format!("expected identifier or '{}' after this '{}'", '<'.fg(Color::Green), "::".fg(Color::Green)),
@@ -1390,11 +1714,11 @@ impl Parser {
                         GreaterThan,
                         |_| ExpectedInformation::new(format!("a '{}' to end a generic instance argument list", '>'.fg(Color::Green)),
                                                     ExpectedClosingDiamond,
-                                                    None,
+                                                     NO_NOTE,
                                                     vec![
                                                         ReportLabel::new(
                                                             loc.clone(),
-                                                            "generic instance argument list begins here".to_string(),
+                                                            "generic instance argument list begins here",
                                                             Some(Color::Green),
                                                         )
                                                     ],
@@ -1481,10 +1805,10 @@ impl Parser {
             let peek_tok = self.peek_ref();
             if peek_tok.token_type != Comma && peek_tok.token_type != ending_type {
                 let clone = peek_tok.clone();
-                _ = self.unexpected(clone.clone(), format!("'{}' or '{}' following an argument in an argument list", ','.fg(Color::Green), ending_str.fg(Color::Green)), ExpectedCommaOrClose, None, vec![
+                _ = self.unexpected(clone.clone(), format!("'{}' or '{}' following an argument in an argument list", ','.fg(Color::Green), ending_str.fg(Color::Green)), ExpectedCommaOrClose, NO_NOTE, vec![
                     ReportLabel::new(
                         opening_location.clone(),
-                        "argument list begins here".to_string(),
+                        "argument list begins here",
                         Some(Color::Cyan),
                     ),
                     ReportLabel::new(
@@ -1503,10 +1827,10 @@ impl Parser {
             result.push(argument)
         }
         let end_location = self.peek_ref().span.clone();
-        let err = self.eat(ending_type, |_| ExpectedInformation::new(format!("'{}' to end the argument list for a call", ending_str.fg(Color::Green)), ExpectedArgumentClose, None, vec![
+        let err = self.eat(ending_type, |_| ExpectedInformation::new(format!("'{}' to end the argument list for a call", ending_str.fg(Color::Green)), ExpectedArgumentClose, NO_NOTE, vec![
             ReportLabel::new(
                 opening_location.clone(),
-                "argument list begins here".to_string(),
+                "argument list begins here",
                 Some(Color::Cyan),
             )]));
         if let Some(e) = err {
@@ -1525,10 +1849,10 @@ impl Parser {
         } {
             let name = self.peek_ref().value.clone();
             let name_loc = self.peek_ref().span.clone();
-            let err = self.eat(Identifier, |_| ExpectedInformation::new("a field name for a field in the field list for an object literal".to_string(), ExpectedFieldName, None, vec![
+            let err = self.eat(Identifier, |_| ExpectedInformation::new("a field name for a field in the field list for an object literal", ExpectedFieldName, NO_NOTE, vec![
                 ReportLabel::new(
                     opening_location.clone(),
-                    "field list begins here".to_string(),
+                    "field list begins here",
                     Some(Color::Cyan),
                 )]));
             if let Some(e) = err {
@@ -1542,7 +1866,7 @@ impl Parser {
             }, vec![
                 ReportLabel::new(
                     opening_location.clone(),
-                    "field list begins here".to_string(),
+                    "field list begins here",
                     Some(Color::Cyan),
                 ),
                 ReportLabel::new(
@@ -1565,10 +1889,10 @@ impl Parser {
             let peek_tok = self.peek_ref();
             if peek_tok.token_type != Comma && peek_tok.token_type != RightBrace {
                 let clone = peek_tok.clone();
-                _ = self.unexpected(clone.clone(), format!("'{}' or '{}' following a field in the field list for an object literal", ','.fg(Color::Green), '}'.fg(Color::Green)), ExpectedCommaOrClose, None, vec![
+                _ = self.unexpected(clone.clone(), format!("'{}' or '{}' following a field in the field list for an object literal", ','.fg(Color::Green), '}'.fg(Color::Green)), ExpectedCommaOrClose, NO_NOTE, vec![
                     ReportLabel::new(
                         opening_location.clone(),
-                        "argument list begins here".to_string(),
+                        "argument list begins here",
                         Some(Color::Cyan),
                     ),
                     ReportLabel::new(
@@ -1587,10 +1911,10 @@ impl Parser {
         }
 
         let end_location = self.peek_ref().span.clone();
-        let err = self.eat(RightBrace, |_| ExpectedInformation::new(format!("'{}' to end the field list for an object literal", '}'.fg(Color::Green)), ExpectedArgumentClose, None, vec![
+        let err = self.eat(RightBrace, |_| ExpectedInformation::new(format!("'{}' to end the field list for an object literal", '}'.fg(Color::Green)), ExpectedArgumentClose, NO_NOTE, vec![
             ReportLabel::new(
                 opening_location.clone(),
-                "field list begins here".to_string(),
+                "field list begins here",
                 Some(Color::Cyan),
             )]));
         if let Some(e) = err {
@@ -1647,11 +1971,11 @@ impl Parser {
                                 GreaterThan,
                                 |_| ExpectedInformation::new(format!("a '{}' to end a generic instance argument list", '>'.fg(Color::Green)),
                                                             ExpectedClosingDiamond,
-                                                            None,
+                                                             NO_NOTE,
                                                             vec![
                                                                 ReportLabel::new(
                                                                     loc2.clone(),
-                                                                    "generic instance argument list begins here".to_string(),
+                                                                    "generic instance argument list begins here",
                                                                     Some(Color::Green),
                                                                 )
                                                             ],
@@ -1678,7 +2002,7 @@ impl Parser {
                                 member: name,
                             })
                         }
-                        _ => return self.unexpected(peek2.clone(), format!("an identifier or '{}'", '<'.fg(Color::Green)), ExpectedIdentifierOrOpeningDiamond, None, vec![
+                        _ => return self.unexpected(peek2.clone(), format!("an identifier or '{}'", '<'.fg(Color::Green)), ExpectedIdentifierOrOpeningDiamond, NO_NOTE, vec![
                             ReportLabel::new(
                                 loc,
                                 format!("expected identifier or '{}' after this '{}'", '<'.fg(Color::Green), "::".fg(Color::Green)),
@@ -1718,8 +2042,8 @@ impl Parser {
                 let unescaped = start.value.unescape_with_quotes();
                 let len = unescaped.chars().count();
                 if len != 1 {
-                    return self.raise(start_loc.clone(), start_loc.begin.clone(), InvalidCharacterLiteral, format!("invalid length for character literal: {len}, character literals must have 1 character"), None, vec![
-                        ReportLabel::new(start_loc.clone(), "invalid character literal found here".to_string(), Some(Color::Red))
+                    return self.raise(start_loc.clone(), start_loc.begin.clone(), InvalidCharacterLiteral, format!("invalid length for character literal: {len}, character literals must have 1 character"), NO_NOTE, vec![
+                        ReportLabel::new(start_loc.clone(), "invalid character literal found here", Some(Color::Red))
                     ]);
                 }
                 let first = unescaped.chars().next().unwrap();
@@ -1770,7 +2094,7 @@ impl Parser {
             TokenType::Dot => {
                 let id = self.peek_ref().value.clone();
                 let loc = self.peek_ref().span.clone();
-                let err = self.eat(Identifier, |_| ExpectedInformation::new("an identifier for an enum literal".to_string(), ExpectedEnumId, None, vec![
+                let err = self.eat(Identifier, |_| ExpectedInformation::new("an identifier for an enum literal", ExpectedEnumId, NO_NOTE, vec![
                     ReportLabel::new(
                         start_loc.clone(),
                         format!("expected identifier after this '{}'", '.'.fg(Color::Green)),
@@ -1785,7 +2109,7 @@ impl Parser {
             }
             LeftParentheses => {
                 let result = self.parse_expression();
-                self.eat(RightParentheses, |_| ExpectedInformation::new(format!("'{}' to close off '{}'", ')'.fg(Color::Green), '('.fg(Color::Green)), ExpectedMatchingParentheses, None, vec![
+                self.eat(RightParentheses, |_| ExpectedInformation::new(format!("'{}' to close off '{}'", ')'.fg(Color::Green), '('.fg(Color::Green)), ExpectedMatchingParentheses, NO_NOTE, vec![
                     ReportLabel::new(
                         start_loc.clone(),
                         format!("parenthetical begins at this '{}'", '('.fg(Color::Green)),
@@ -1813,15 +2137,15 @@ impl Parser {
             TokenType::BlockYield => {
                 let front = self.peek();
                 let block_name = front.value;
-                self.eat(Identifier, |_| ExpectedInformation::new("a name for a named yield".to_string(), ExpectedBlockName, Some(format!("You might be trying to yield a value, rather than from a named block, consider putting a space between the '{}' and '{}' tokens", "yield".fg(Color::Blue), '('.fg(Color::Green))), vec![
+                self.eat(Identifier, |_| ExpectedInformation::new("a name for a named yield", ExpectedBlockName, Some(format!("You might be trying to yield a value, rather than from a named block, consider putting a space between the '{}' and '{}' tokens", "yield".fg(Color::Blue), '('.fg(Color::Green))), vec![
                     ReportLabel::new(
                         start_loc.clone(),
-                        "named yield begins here, expected name afterwards".to_string(),
+                        "named yield begins here, expected name afterwards",
                         Some(Color::Blue),
                     )
-                ])).unwrap_or_else(|| self.eat(RightParentheses, |_| ExpectedInformation::new(format!("A '{}' to close off a named block yield's name.", ')'.fg(Color::Green)), ExpectedMatchingParentheses, None, vec![ReportLabel::new(
+                ])).unwrap_or_else(|| self.eat(RightParentheses, |_| ExpectedInformation::new(format!("A '{}' to close off a named block yield's name.", ')'.fg(Color::Green)), ExpectedMatchingParentheses, NO_NOTE, vec![ReportLabel::new(
                     start_loc.clone(),
-                    "named yield begins here, expected name afterwards".to_string(),
+                    "named yield begins here, expected name afterwards",
                     Some(Color::Blue),
                 )])).unwrap_or_else(|| {
                     let result = self.parse_expression();
@@ -1859,50 +2183,60 @@ impl Parser {
                 go_back();
                 self.parse_loop()
             }
-            TokenType::SelfType => AstNode::new(start_loc, AstNodeData::SelfValue),
+            TokenType::SelfType => AstNode::new(start_loc, SelfValue),
             TokenType::Underscore => AstNode::new(start_loc, Underscore),
+            TokenType::Typeof => {
+                let result = self.parse_type(false);
+                AstNode::new(start_loc.expanded(&result.span),Typeof(result))
+            }
             _ => {
-                if is_statement_end(start.token_type) {
-                    go_back();
+                match self.parse_type_common(start.clone(),start_loc,return_to) {
+                    Some(t) => t,
+                    None => {
+                        if is_statement_end(start.token_type) {
+                            self.location = return_to;
+                        }
+                        self.unexpected(start, format!(
+                            "any of the following: {}, {}, {}, {}, {}, {}, {}, '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', or a type.",
+                            "an integer literal".fg(cg.next()),
+                            "a floating point literal".fg(cg.next()),
+                            "an imaginary literal".fg(cg.next()),
+                            "an identifier".fg(cg.next()),
+                            "a builtin".fg(cg.next()),
+                            "a string literal".fg(cg.next()),
+                            "a character literal".fg(cg.next()),
+                            '&'.fg(cg.next()),
+                            '-'.fg(cg.next()),
+                            '+'.fg(cg.next()),
+                            "not".fg(cg.next()),
+                            "true".fg(cg.next()),
+                            "false".fg(cg.next()),
+                            '|'.fg(cg.next()),
+                            "fn".fg(cg.next()),
+                            "none".fg(cg.next()),
+                            ".(".fg(cg.next()),
+                            ".[".fg(cg.next()),
+                            ".{".fg(cg.next()),
+                            '.'.fg(cg.next()),
+                            '{'.fg(cg.next()),
+                            '('.fg(cg.next()),
+                            "return".fg(cg.next()),
+                            "continue".fg(cg.next()),
+                            "break".fg(cg.next()),
+                            "yield".fg(cg.next()),
+                            "comptime".fg(cg.next()),
+                            ":(".fg(cg.next()),
+                            "if".fg(cg.next()),
+                            "match".fg(cg.next()),
+                            "loop".fg(cg.next()),
+                            "self".fg(cg.next()),
+                            "for".fg(cg.next()),
+                            "while".fg(cg.next()),
+                            "typeof".fg(cg.next()),
+                            '_'.fg(cg.next())
+                        ), ExpectedPrimary, NO_NOTE, vec![])
+                    }
                 }
-                self.unexpected(start, format!(
-                    "any of the following: {}, {}, {}, {}, {}, {}, {}, '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', or '{}'.",
-                    "an integer literal".fg(cg.next()),
-                    "a floating point literal".fg(cg.next()),
-                    "an imaginary literal".fg(cg.next()),
-                    "an identifier".fg(cg.next()),
-                    "a builtin".fg(cg.next()),
-                    "a string literal".fg(cg.next()),
-                    "a character literal".fg(cg.next()),
-                    '&'.fg(cg.next()),
-                    '-'.fg(cg.next()),
-                    '+'.fg(cg.next()),
-                    "not".fg(cg.next()),
-                    "true".fg(cg.next()),
-                    "false".fg(cg.next()),
-                    '|'.fg(cg.next()),
-                    "fn".fg(cg.next()),
-                    "none".fg(cg.next()),
-                    ".(".fg(cg.next()),
-                    ".[".fg(cg.next()),
-                    ".{".fg(cg.next()),
-                    '.'.fg(cg.next()),
-                    '{'.fg(cg.next()),
-                    '('.fg(cg.next()),
-                    "return".fg(cg.next()),
-                    "continue".fg(cg.next()),
-                    "break".fg(cg.next()),
-                    "yield".fg(cg.next()),
-                    "comptime".fg(cg.next()),
-                    ":(".fg(cg.next()),
-                    "if".fg(cg.next()),
-                    "match".fg(cg.next()),
-                    "loop".fg(cg.next()),
-                    "self".fg(cg.next()),
-                    "for".fg(cg.next()),
-                    "while".fg(cg.next()),
-                    '_'.fg(cg.next())
-                ), ExpectedPrimary, None, vec![])
             }
         }
     }
@@ -1930,16 +2264,16 @@ impl Parser {
                             ']'.fg(Color::Blue),
                         ),
                         ExpectedCommaOrClose,
-                        None,
+                        NO_NOTE,
                         vec![
                             ReportLabel::new(
                                 location.clone(),
-                                "closure begins here".to_string(),
+                                "closure begins here",
                                 Some(Color::Yellow),
                             ),
                             ReportLabel::new(
                                 capture_list_begin.clone(),
-                                "capture list begins here".to_string(),
+                                "capture list begins here",
                                 Some(Color::Green),
                             ),
                             ReportLabel::new(
@@ -1954,15 +2288,15 @@ impl Parser {
                 }
                 captures.push(capture);
             }
-            let err = self.eat(RightBracket, |_| ExpectedInformation::new(format!("'{}' to close off the capture list for a closure", ']'.fg(Color::Green)), ExpectedCaptureClose, None, vec![
+            let err = self.eat(RightBracket, |_| ExpectedInformation::new(format!("'{}' to close off the capture list for a closure", ']'.fg(Color::Green)), ExpectedCaptureClose, NO_NOTE, vec![
                 ReportLabel::new(
                     location.clone(),
-                    "closure begins here".to_string(),
+                    "closure begins here",
                     Some(Color::Yellow),
                 ),
                 ReportLabel::new(
                     capture_list_begin.clone(),
-                    "capture list begins here".to_string(),
+                    "capture list begins here",
                     Some(Color::Green),
                 ),
             ]));
@@ -1995,7 +2329,7 @@ impl Parser {
                 peek.clone(),
                 format!("'{}' to start argument list for {}", '('.fg(Color::Green), if is_for_type { "function type".fg(Color::Red) } else { "anonymous function".fg(Color::Yellow) }),
                 ExpectedOpeningParentheses,
-                None,
+                NO_NOTE,
                 vec![
                     ReportLabel::new(
                         location.clone(),
@@ -2005,7 +2339,11 @@ impl Parser {
                 ],
             );
         }
-        let arguments = self.parse_arguments(RightParentheses, location.clone(), if is_for_type { "function type" } else { "anonymous function" }, "unnamed", "", ")", if is_for_type { Color::Red } else { Color::Yellow });
+        let arguments = if !is_for_type {
+            self.parse_arguments(RightParentheses, location.clone(), "anonymous function", "<anonymous>", "", ")", if is_for_type { Color::Red } else { Color::Yellow })
+        } else {
+            self.parse_type_argument_list()
+        };
         // We should parse flags before the return type, as we might be returning a function type that could have flags
         let flags = self.parse_flags();
         let mut return_type = None;
@@ -2014,7 +2352,7 @@ impl Parser {
             self.eat_any();
             return_type = Some(self.parse_type(true));
         } else if is_for_type {
-            return_type = Some(self.unexpected(peek.clone(), format!("'{}' to begin return type for function type", "->".fg(Color::Green)), ExpectedReturnType, None, vec![
+            return_type = Some(self.unexpected(peek.clone(), format!("'{}' to begin return type for function type", "->".fg(Color::Green)), ExpectedReturnType, NO_NOTE, vec![
                 ReportLabel::new(
                     location.clone(),
                     format!("{} begins here", if is_for_type { "function type".fg(Color::Red) } else { "anonymous function".fg(Color::Yellow) }),
@@ -2063,11 +2401,11 @@ impl Parser {
                 peek.clone(),
                 format!("'{}', '{}', following an anonymous function declaration", "=>".fg(cg.next()), "{".fg(cg.next())),
                 ExpectedFunctionInformation,
-                None,
+                NO_NOTE,
                 vec![
                     ReportLabel::new(
                         location.clone(),
-                        "anonymous function begins here".to_string(),
+                        "anonymous function begins here",
                         Some(Color::Yellow),
                     )
                 ],
@@ -2099,11 +2437,11 @@ impl Parser {
         self.eat(RightBrace,|_|ExpectedInformation::new(
             format!("'{}' to close block",'}'.fg(Color::Green)),
             ExpectedClosingBrace,
-            None,
+            NO_NOTE,
             vec![
                 ReportLabel::new(
                     begin.clone(),
-                    "block begins here".to_string(),
+                    "block begins here",
                     Some(Color::Green)
                 )
             ]
@@ -2137,11 +2475,11 @@ impl Parser {
             if let Some(err) = self.eat(Semicolon,|_|ExpectedInformation::new(
                 format!("expected '{}' after statement",';'.fg(Color::Green)),
                 ExpectedSemicolon,
-                None,
+                NO_NOTE,
                 vec![
                     ReportLabel::new(
                         statement.span.clone(),
-                        "expected after this statement".to_string(),
+                        "expected after this statement",
                         Some(Color::Green)
                     )
                 ]
@@ -2160,7 +2498,7 @@ impl Parser {
             LeftParentheses,
             |_| ExpectedInformation::new(format!("'{}' to begin the condition in an if statement", '('.fg(Color::Green)),
                                         ExpectedOpeningParentheses,
-                                        Some("Cheese requires parentheses around conditions in control structures.".to_string()),
+                                        Some("Cheese requires parentheses around conditions in control structures."),
                                         vec![
                                             ReportLabel::new(
                                                 location.clone(),
@@ -2182,7 +2520,7 @@ impl Parser {
             RightParentheses,
             |_| ExpectedInformation::new(format!("'{}' to close the condition on an if statement", ')'.fg(Color::Green)),
                                         ExpectedMatchingParentheses,
-                                        Some("Cheese requires parentheses around conditions in control structures.".to_string()),
+                                        Some("Cheese requires parentheses around conditions in control structures."),
                                         vec![
                                             ReportLabel::new(
                                                 paren_location.clone(),
@@ -2236,12 +2574,13 @@ impl Parser {
                 capture_type = CaptureType::Const;
             }
             Identifier | TokenType::Underscore => {}
-            _ => return self.unexpected(front.clone(), format!("'{}', '{}', '{}', or an identifier for a capture", '*'.fg(Color::Green), "*~".fg(Color::Green), '='.fg(Color::Green)), ExpectedCaptureSpecifier, None, vec![])
+            _ => return self.unexpected(front.clone(), format!("'{}', '{}', '{}', or an identifier for a capture", '*'.fg(Color::Green), "*~".fg(Color::Green), '='.fg(Color::Green)), ExpectedCaptureSpecifier, NO_NOTE, vec![])
         }
         let front = self.peek();
         if front.token_type == Identifier || front.token_type == TokenType::Underscore {
             let end = front.span.clone();
             let name = front.value;
+            self.eat_any();
             AstNode::new(location.expanded(&end), match capture_type {
                 CaptureType::Copy => CopyCapture(name),
                 CaptureType::Reference => ReferenceCapture(name),
@@ -2254,10 +2593,10 @@ impl Parser {
                 CaptureType::Const => ConstReferenceImplicitCapture
             })
         } else {
-            self.unexpected(front, "a name for a capture in a context disallowing implicit captures".to_string(), ExpectedCaptureName, Some("Cheese only allows implicit captures in closures.".to_string()), vec![
+            self.unexpected(front, "a name for a capture in a context disallowing implicit captures", ExpectedCaptureName, Some("Cheese only allows implicit captures in closures."), vec![
                 ReportLabel::new(
                     location,
-                    "capture specifier begins here, expected name afterwards".to_string(),
+                    "capture specifier begins here, expected name afterwards",
                     Some(Color::Green),
                 )
             ])
@@ -2274,7 +2613,7 @@ impl Parser {
             LeftParentheses,
             |_| ExpectedInformation::new(format!("'{}' to begin the value in a match statement statement", '('.fg(Color::Green)),
                                          ExpectedOpeningParentheses,
-                                         Some("Cheese requires parentheses around conditions in control structures.".to_string()),
+                                         Some("Cheese requires parentheses around conditions in control structures."),
                                          vec![
                                              ReportLabel::new(
                                                  location.clone(),
@@ -2293,7 +2632,7 @@ impl Parser {
             RightParentheses,
             |_| ExpectedInformation::new(format!("'{}' to close the condition on a match statement", ')'.fg(Color::Green)),
                                          ExpectedMatchingParentheses,
-                                         Some("Cheese requires parentheses around conditions in control structures.".to_string()),
+                                         Some("Cheese requires parentheses around conditions in control structures."),
                                          vec![
                                              ReportLabel::new(
                                                  paren_location.clone(),
@@ -2311,16 +2650,16 @@ impl Parser {
             |_| ExpectedInformation::new(
                 format!("'{}' to begin the arms of a match statement", '{'.fg(Color::Green)),
                 ExpectedOpeningBrace,
-                None,
+                NO_NOTE,
                 vec![
                     ReportLabel::new(
                         location.clone(),
-                        "match statement begins here".to_string(),
+                        "match statement begins here",
                         Some(Color::Blue),
                     ),
                     ReportLabel::new(
                         close_paren.clone(),
-                        "expected after this token".to_string(),
+                        "expected after this token",
                         Some(Color::Green)
                     )
                 ]
@@ -2338,7 +2677,7 @@ impl Parser {
                 continue
             }
             let arm = self.parse_match_arm();
-            let requires_comma = if let AstNodeData::MatchArm {body, ..} = &arm.data {
+            let requires_comma = if let MatchArm {body, ..} = &arm.data {
                 if let AstNodeData::Block(_) = &body.data {
                     false
                 } else {
@@ -2351,10 +2690,10 @@ impl Parser {
                 RightBrace | Comma => false,
                 _ => true
             } {
-                _ = self.unexpected(self.peek(),format!("a '{}' or a '{}' following an expression match arm in a match statement",'}'.fg(Color::Green),','.fg(Color::Green)),ExpectedCommaOrClose,None,vec![
+                _ = self.unexpected(self.peek(),format!("a '{}' or a '{}' following an expression match arm in a match statement",'}'.fg(Color::Green),','.fg(Color::Green)),ExpectedCommaOrClose,NO_NOTE,vec![
                     ReportLabel::new(
                         location.clone(),
-                        "match statement begins here".to_string(),
+                        "match statement begins here",
                         Some(Color::Blue)
                     ),
                     ReportLabel::new(
@@ -2371,11 +2710,11 @@ impl Parser {
         self.eat(RightBrace,|_|ExpectedInformation::new(
             format!("'{}' to close match statement",'}'.fg(Color::Green)),
             ExpectedClosingBrace,
-            None,
+            NO_NOTE,
             vec![
                 ReportLabel::new(
                     location.clone(),
-                    "match statement begins here".to_string(),
+                    "match statement begins here",
                     Some(Color::Blue),
                 ),
                 ReportLabel::new(
@@ -2389,8 +2728,7 @@ impl Parser {
 
     fn parse_match_arm(&mut self) -> NodePtr {
         let mut matches = vec![];
-        let mut store = None;
-        let mut location = self.peek_ref().span.clone();
+        let location = self.peek_ref().span.clone();
         while match self.peek_ref().token_type {
             ThickArrow | Arrow | EndOfFile => false,
             _ => true
@@ -2400,10 +2738,10 @@ impl Parser {
                 ThickArrow | Arrow | Comma => false,
                 _ => true
             } {
-                _ = self.unexpected(self.peek(),format!("a '{}', '{}' or '{}' following a match statement in a match arm",','.fg(Color::Green),"->".fg(Color::Green),"=>".fg(Color::Green)),ExpectedCommaOrArrow,None,vec![
+                _ = self.unexpected(self.peek(),format!("a '{}', '{}' or '{}' following a match statement in a match arm",','.fg(Color::Green),"->".fg(Color::Green),"=>".fg(Color::Green)),ExpectedCommaOrArrow,NO_NOTE,vec![
                     ReportLabel::new(
                         location.clone(),
-                        "match arm".to_string(),
+                        "match arm",
                         Some(Color::Blue)
                     ),
                     ReportLabel::new(
@@ -2411,20 +2749,29 @@ impl Parser {
                         format!("'{}', '{}' or '{}' expected after this match statement",','.fg(Color::Green),"->".fg(Color::Green),"=>".fg(Color::Green)),
                         Some(Color::Red)
                     )
-                ])
+                ]);
+                self.eat_any()
             } else if self.peek_ref().token_type == Comma {
                 self.eat_any()
             }
             matches.push(statement);
         }
+        // now we actually capture the arrow
+        let store = if self.peek_ref().token_type == Arrow {
+            self.eat_any();
+            Some(self.parse_capture(false))
+        } else {
+            None
+        };
+
         self.eat(ThickArrow,|_|ExpectedInformation::new(
             format!("a '{}' to begin the body of a match arm","=>".fg(Color::Green)),
             ExpectedMatchBody,
-            None,
+            NO_NOTE,
             vec![
                 ReportLabel::new(
                     location.clone(),
-                    "match arm begins here".to_string(),
+                    "match arm begins here",
                     Some(Color::Green)
                 )
             ]
@@ -2477,7 +2824,119 @@ impl Parser {
     }
 
     fn parse_for(&mut self) -> NodePtr {
-        todo!()
+        let location = self.peek_ref().span.clone();
+        self.eat_any();
+        let open_location = location.clone();
+        if let Some(err) = self.eat(
+            LeftParentheses,
+            |_| ExpectedInformation::new(format!("'{}' to begin the control in a for loop", '('.fg(Color::Green)),
+                 ExpectedOpeningParentheses,
+                 Some("Cheese requires parentheses around conditions in control structures."),
+                 vec![
+                     ReportLabel::new(
+                         location.clone(),
+                         format!("{} loop begins here, expected '{}' afterwards", "for".fg(Color::Blue), '('.fg(Color::Green)),
+                         Some(Color::Blue),
+                     )
+                 ],
+            )) {
+            return err;
+        }
+        let capture = self.parse_capture(false);
+        let index = if self.peek_ref().token_type == Comma {
+            let comma_loc = self.peek_ref().span.clone();
+            self.eat_any();
+            let result = Some(AstNode::new(self.peek_ref().span.clone(),NameReference(self.peek_ref().value.clone())));
+            if self.peek_ref().token_type != Identifier && self.peek_ref().token_type != TokenType::Underscore {
+                Some(self.unexpected(self.peek(),format!("an identifier or '{}' following a comma in a for loop",'_'.fg(Color::Green)),ExpectedIndexName,NO_NOTE,vec![
+                    ReportLabel::new(
+                        location.clone(),
+                        format!("{} loop begins here","for".fg(Color::Blue)),
+                        Some(Color::Blue)
+                    ),
+                    ReportLabel::new(
+                        location.clone(),
+                        format!("'{}' found here, expected name afterwards",','.fg(Color::Green)),
+                        Some(Color::Green)
+                    )
+                ]))
+            } else {
+                result
+            }
+        } else {
+            None
+        };
+
+        if let Some(err) = self.eat(
+            Colon,
+            |_| ExpectedInformation::new(
+                format!("'{}' to separate the captures and the iterable in a for loop",':'.fg(Color::Green)),
+                ExpectedColon,
+                NO_NOTE,
+                vec![
+                    ReportLabel::new(
+                        location.clone(),
+                        "for loop begins here",
+                        Some(Color::Blue)
+                    )
+                ]
+
+            )
+        ) {
+            return err;
+        }
+        let iterable = self.parse_expression();
+        let mut transformations = vec![];
+        while match self.peek_ref().token_type {
+            Colon | Question => true,
+            _ => false
+        } {
+            let location = self.peek_ref().span.clone();
+            let is_map = self.peek_ref().token_type == Colon;
+            self.eat_any();
+            let transform = self.parse_expression();
+            transformations.push(AstNode::new(location.expanded(&transform.span),if is_map {
+                MapTransformation(transform)
+            } else {
+                FilterTransformation(transform)
+            }));
+        }
+        if let Some(err) = self.eat(
+            RightParentheses,
+            |_| ExpectedInformation::new(format!("'{}' to close the condition on a while statement", ')'.fg(Color::Green)),
+                                         ExpectedMatchingParentheses,
+                                         Some("Cheese requires parentheses around conditions in control structures."),
+                                         vec![
+                                             ReportLabel::new(
+                                                 open_location.clone(),
+                                                 format!("'{}' found here, expected matching '{}'", '('.fg(Color::Green), ')'.fg(Color::Green)),
+                                                 Some(Color::Green),
+                                             )
+                                         ],
+            )) {
+            return err;
+        }
+        let body = self.parse_expression();
+        let els = if self.peek_ref().token_type == Else {
+            self.eat_any();
+            Some(self.parse_expression())
+        } else {
+            None
+        };
+        AstNode::new(
+            location.expanded(match &els {
+                None => &body.span,
+                Some(els) => &els.span
+            }),
+            For {
+                capture,
+                index_capture: index,
+                iterable,
+                transformations,
+                body,
+                else_statement: els,
+            }
+        )
     }
 
     fn parse_while(&mut self) -> NodePtr {
@@ -2488,7 +2947,7 @@ impl Parser {
             LeftParentheses,
             |_| ExpectedInformation::new(format!("'{}' to begin the condition in a while statement", '('.fg(Color::Green)),
                                          ExpectedOpeningParentheses,
-                                         Some("Cheese requires parentheses around conditions in control structures.".to_string()),
+                                         Some("Cheese requires parentheses around conditions in control structures."),
                                          vec![
                                              ReportLabel::new(
                                                  location.clone(),
@@ -2505,7 +2964,7 @@ impl Parser {
             RightParentheses,
             |_| ExpectedInformation::new(format!("'{}' to close the condition on a while statement", ')'.fg(Color::Green)),
                                          ExpectedMatchingParentheses,
-                                         Some("Cheese requires parentheses around conditions in control structures.".to_string()),
+                                         Some("Cheese requires parentheses around conditions in control structures."),
                                          vec![
                                              ReportLabel::new(
                                                  paren_location.clone(),
@@ -2554,11 +3013,11 @@ impl Parser {
         self.eat(Assign,|_|ExpectedInformation::new(
             format!("a '{}' following the declarator for a variable",'='.fg(Color::Green)),
             ExpectedEquals,
-            None,
+            NO_NOTE,
             vec![
                 ReportLabel::new(
                     location.clone(),
-                    "declarator begins here".to_string(),
+                    "declarator begins here",
                     Some(Color::Blue)
                 ),
                 ReportLabel::new(
@@ -2572,7 +3031,7 @@ impl Parser {
             self.eat(Semicolon, |_|ExpectedInformation::new(
                 format!("a '{}' following a variable initializer", ';'.fg(Color::Green)),
                 ExpectedSemicolon,
-                None,
+                NO_NOTE,
                 vec![
                     ReportLabel::new(
                         value.span.clone(),
@@ -2595,9 +3054,9 @@ impl Parser {
         let location = front.span;
         let name = front.value;
         let err = self.eat(Identifier, |_|ExpectedInformation::new(
-            "a variable name".to_string(),
+            "a variable name",
             ExpectedVariableName,
-            None,
+            NO_NOTE,
             vec![]
         ));
         let flags = self.parse_flags();
@@ -2621,7 +3080,7 @@ impl Parser {
         self.eat(Semicolon, |_|ExpectedInformation::new(
             format!("a '{}' following a variable definition", ';'.fg(Color::Green)),
             ExpectedSemicolon,
-            None,
+            NO_NOTE,
             vec![
                 ReportLabel::new(
                     def.span.clone(),
@@ -2646,10 +3105,10 @@ impl Parser {
                 RightBracket | Comma => false,
                 _ => true
             } {
-                _ = self.unexpected(self.peek(),format!("a '{}' or a '{}' following a destructuring specifier in a array destructure",']'.fg(Color::Green),','.fg(Color::Green)),ExpectedCommaOrClose,None,vec![
+                _ = self.unexpected(self.peek(),format!("a '{}' or a '{}' following a destructuring specifier in a array destructure",']'.fg(Color::Green),','.fg(Color::Green)),ExpectedCommaOrClose,NO_NOTE,vec![
                     ReportLabel::new(
                         location.clone(),
-                        "array destructure begins here".to_string(),
+                        "array destructure begins here",
                         Some(Color::Blue)
                     ),
                     ReportLabel::new(
@@ -2667,11 +3126,11 @@ impl Parser {
         self.eat(RightBracket, |_|ExpectedInformation::new(
             format!("a '{}' to end an array destructure", ']'.fg(Color::Green)),
             ExpectedSemicolon,
-            None,
+            NO_NOTE,
             vec![
                 ReportLabel::new(
                     location.clone(),
-                    "array destructure begins here".to_string(),
+                    "array destructure begins here",
                     Some(Color::Red)
                 )
             ]
@@ -2690,10 +3149,10 @@ impl Parser {
                 RightParentheses | Comma => false,
                 _ => true
             } {
-                _ = self.unexpected(self.peek(),format!("a '{}' or a '{}' following a destructuring specifier in a tuple destructure",')'.fg(Color::Green),','.fg(Color::Green)),ExpectedCommaOrClose,None,vec![
+                _ = self.unexpected(self.peek(),format!("a '{}' or a '{}' following a destructuring specifier in a tuple destructure",')'.fg(Color::Green),','.fg(Color::Green)),ExpectedCommaOrClose,NO_NOTE,vec![
                     ReportLabel::new(
                         location.clone(),
-                        "tuple destructure begins here".to_string(),
+                        "tuple destructure begins here",
                         Some(Color::Blue)
                     ),
                     ReportLabel::new(
@@ -2711,11 +3170,11 @@ impl Parser {
         self.eat(RightParentheses, |_|ExpectedInformation::new(
             format!("a '{}' to end a tuple destructure", ')'.fg(Color::Green)),
             ExpectedSemicolon,
-            None,
+            NO_NOTE,
             vec![
                 ReportLabel::new(
                     location.clone(),
-                    "tuple destructure begins here".to_string(),
+                    "tuple destructure begins here",
                     Some(Color::Red)
                 )
             ]
@@ -2732,13 +3191,13 @@ impl Parser {
             let name = self.peek_ref().value.clone();
             let name_loc = self.peek_ref().span.clone();
             if let Some(err) = self.eat(Identifier,|_|ExpectedInformation::new(
-                "name for a field in a structure destructure".to_string(),
+                "name for a field in a structure destructure",
                 ExpectedFieldName,
-                None,
+                NO_NOTE,
                 vec![
                     ReportLabel::new(
                         location.clone(),
-                        "structure destructure begins here".to_string(),
+                        "structure destructure begins here",
                         Some(Color::Green)
                     )
                 ]
@@ -2758,12 +3217,12 @@ impl Parser {
                 vec![
                     ReportLabel::new(
                         location.clone(),
-                        "structure destructure begins here".to_string(),
+                        "structure destructure begins here",
                         Some(Color::Green)
                     ),
                     ReportLabel::new(
                         name_loc.clone(),
-                        "expected after name here".to_string(),
+                        "expected after name here",
                         Some(Color::Red)
                     )
                 ]
@@ -2776,10 +3235,10 @@ impl Parser {
                 RightBrace | Comma => false,
                 _ => true
             } {
-                _ = self.unexpected(self.peek(),format!("a '{}' or a '{}' following a destructuring specifier in a structure destructure",'}'.fg(Color::Green),','.fg(Color::Green)),ExpectedCommaOrClose,None,vec![
+                _ = self.unexpected(self.peek(),format!("a '{}' or a '{}' following a destructuring specifier in a structure destructure",'}'.fg(Color::Green),','.fg(Color::Green)),ExpectedCommaOrClose,NO_NOTE,vec![
                     ReportLabel::new(
                         location.clone(),
-                        "structure destructure begins here".to_string(),
+                        "structure destructure begins here",
                         Some(Color::Blue)
                     ),
                     ReportLabel::new(
@@ -2797,11 +3256,11 @@ impl Parser {
         self.eat(RightBrace, |_|ExpectedInformation::new(
             format!("a '{}' to end a structure destructure", '}'.fg(Color::Green)),
             ExpectedSemicolon,
-            None,
+            NO_NOTE,
             vec![
                 ReportLabel::new(
                     location.clone(),
-                    "structure destructure begins here".to_string(),
+                    "structure destructure begins here",
                     Some(Color::Red)
                 )
             ]
@@ -2828,11 +3287,11 @@ impl Parser {
         self.eat(Assign,|_|ExpectedInformation::new(
             format!("a '{}' following a destructure specifier",'='.fg(Color::Green)),
             ExpectedEquals,
-            None,
+            NO_NOTE,
             vec![
                 ReportLabel::new(
                     start_location.clone(),
-                    "destructure begins here".to_string(),
+                    "destructure begins here",
                     Some(Color::Blue)
                 ),
                 ReportLabel::new(
@@ -2846,7 +3305,7 @@ impl Parser {
             self.eat(Semicolon, |_|ExpectedInformation::new(
                 format!("a '{}' following a destructure value", ';'.fg(Color::Green)),
                 ExpectedSemicolon,
-                None,
+                NO_NOTE,
                 vec![
                     ReportLabel::new(
                         value.span.clone(),

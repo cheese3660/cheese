@@ -6,7 +6,7 @@ use paste::paste;
 use cheese_diagnostics::ErrorCode;
 use cheese_utilities::strings::Escapable;
 use cheese_utilities::trees::{DisplayableTree, DisplayNode, NodeBuilder};
-use crate::ast::{AstNode, AstNodeData, DeclarationFlags};
+use crate::ast::{AstNode, AstNodeData, DeclarationFlags, Operator};
 
 type NodePtr = Box<AstValidator>;
 type NodeList = Vec<NodePtr>;
@@ -80,6 +80,7 @@ pub enum AstValidator {
     MapTransformation(NodePtr),
     Comptime(NodePtr),
     ImplicitResult(NodePtr),
+    Typeof(NodePtr),
     ImplicitArray {
         constant: bool,
         subtype: NodePtr,
@@ -328,7 +329,7 @@ pub enum AstValidator {
     },
     Operator {
         flags: DeclarationFlags,
-        operator: String,
+        operator: Operator,
         generic_arguments: Option<NodeList>,
         arguments: NodeList,
         return_type: OptionalNode,
@@ -469,7 +470,7 @@ impl AstValidator {
                 if let AstNodeData::$name(v) = &data { $validator.validate(v) } else { false }
             };
         }
-        match self {
+        let result = match self {
             AstValidator::Any => true,
             AstValidator::Bool => check!(Bool),
             AstValidator::SignedSize => check!(SignedSize),
@@ -538,6 +539,7 @@ impl AstValidator {
             AstValidator::MapTransformation(arg) => check_unary!(MapTransformation, arg),
             AstValidator::Comptime(arg) => check_unary!(Comptime, arg),
             AstValidator::ImplicitResult(arg) => check_unary!(ImplicitResult,arg),
+            AstValidator::Typeof(arg) => check_unary!(Typeof,arg),
             AstValidator::ImplicitArray {
                 constant, subtype
             } => {
@@ -657,7 +659,7 @@ impl AstValidator {
                 }
             },
             AstValidator::MatchValue(value) => check_unary!(MatchValue,value),
-            AstValidator::MatchConstraint(value) => check_unary!(MatchValue,value),
+            AstValidator::MatchConstraint(value) => check_unary!(MatchConstraint,value),
             AstValidator::DestructuringMatchStructure(value) => check_dict!(DestructuringMatchStructure,value),
             AstValidator::DestructuringMatchTuple(value) => check_list!(DestructuringMatchTuple,value),
             AstValidator::DestructuringMatchArray(value) => check_list!(DestructuringMatchArray,value),
@@ -979,7 +981,11 @@ impl AstValidator {
                     false
                 }
             }
+        };
+        if !result {
+            println!("failed to validate!\nexpected:\n{self}\n\ngot:\n{node}\n\n")
         }
+        result
     }
 }
 const TYPE_COLOR: Color = Color::Red;
@@ -1027,7 +1033,7 @@ impl DisplayableTree for AstValidator {
             AstValidator::SignedIntegerType(size) => NodeBuilder::new_terminal(format!("i{}",size),TYPE_COLOR),
             AstValidator::UnsignedIntegerType(size) => NodeBuilder::new_terminal(format!("u{}",size),TYPE_COLOR),
             AstValidator::StringLiteral(s) => NodeBuilder::new_terminal(s.escape_with_quotes("\""),VALUE_COLOR),
-            AstValidator::FloatLiteral(f) => NodeBuilder::new_terminal(f,VALUE_COLOR),
+            AstValidator::FloatLiteral(f) => NodeBuilder::new_terminal(format!("{f:?}"),VALUE_COLOR),
             AstValidator::ImaginaryLiteral(i) => NodeBuilder::new_terminal(format!("{i}I"),VALUE_COLOR),
             AstValidator::IntegerLiteral(i) => NodeBuilder::new_terminal(i,VALUE_COLOR),
             AstValidator::NameReference(name) => NodeBuilder::new_terminal(name,NAME_COLOR),
@@ -1055,6 +1061,7 @@ impl DisplayableTree for AstValidator {
             AstValidator::MapTransformation(child) => NodeBuilder::new("|",KEYWORD_COLOR).convert_child(child).build(),
             AstValidator::Comptime(child) => NodeBuilder::new("comptime",KEYWORD_COLOR).convert_child(child).build(),
             AstValidator::ImplicitResult(child) => NodeBuilder::new("implicit",OTHER_COLOR).convert_child(child).build(),
+            AstValidator::Typeof(child) => NodeBuilder::new("typeof",KEYWORD_COLOR).convert_child(child).build(),
             AstValidator::ImplicitArray { constant, subtype } => NodeBuilder::new(if *constant { "implicit constant array type" } else {"implicit array type"},TYPE_COLOR).convert_child(subtype).build(),
             AstValidator::Slice { constant, subtype } => NodeBuilder::new(if *constant { "constant slice type" } else {"slice type"},TYPE_COLOR).convert_child(subtype).build(),
             AstValidator::Reference { constant, subtype } => NodeBuilder::new(if *constant { "constant reference type" } else {"reference type"},TYPE_COLOR).convert_child(subtype).build(),
@@ -1243,7 +1250,7 @@ impl DisplayableTree for AstValidator {
             }
             AstValidator::Operator { flags, operator, generic_arguments, arguments, return_type, body } => {
                 let mut builder = NodeBuilder::new("operator", KEYWORD_COLOR);
-                builder.make_field("operator",operator, METHOD_COLOR).make_field("flags",format!("{flags}"),KEYWORD_COLOR);
+                builder.make_field("operator",format!("{operator}"), METHOD_COLOR).make_field("flags",format!("{flags}"),KEYWORD_COLOR);
                 if let Some(args) = generic_arguments {
                     builder.list_field("generic arguments",args.iter());
                 }
@@ -1560,6 +1567,7 @@ validator_set!(
     TupleDestructure(NodeList),
     ArrayDestructure(NodeList),
     SliceDestructure(NodeList),
+    Typeof(NodePtr)
 );
 
 
@@ -1808,7 +1816,7 @@ validator!(Function {
 });
 validator!(Operator {
     flags: DeclarationFlags,
-    operator: String,
+    operator: Operator,
     generic_arguments: Option<NodeList>,
     arguments: NodeList,
     return_type: OptionalNode,
@@ -1910,6 +1918,10 @@ pub fn v_single(child: NodePtr) -> NodePtr {
 
 pub fn v_name<T: ToString>(name: T) -> NodePtr {
     v_name_reference(name.to_string())
+}
+
+pub fn v_string<T: ToString>(name: T) -> NodePtr {
+    v_string_literal(name.to_string())
 }
 
 #[macro_export]

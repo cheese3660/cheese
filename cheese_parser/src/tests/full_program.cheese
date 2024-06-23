@@ -5,8 +5,8 @@ type HSL is struct {
     s:f64,
     l:f64,
     fn to_rgb(~self) public -> RGB {
-        let c = (1 - abs(2.0 * self.l - 1.0)) * self.s;
-        let x = c * (1 - abs((self.h / 60.0) % 2.0 - 1.0));
+        let c = (1.0 - abs(2.0 * self.l - 1.0)) * self.s;
+        let x = c * (1.0 - abs((self.h / 60.0) % 2.0 - 1.0));
         let m = self.l - c/2.0;
         let h60 = (self.h / 60.0) @ u8;
         let (rprime, gprime, bprime) = match (h60)
