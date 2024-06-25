@@ -166,6 +166,11 @@ pub enum TokenType {
     Operator, // operator
     Concept, // concept
     Typeof, // typeof
+    Constructor, // constructor
+    Destructor, // destructor
+    Delete, // delete
+    Explicit, // explicit
+    Implicit, // implicit
     // Special
     EndOfFile,
     // Lexer error token
@@ -247,6 +252,8 @@ lazy_static! {
         m.insert("template", TokenType::Template);
         m.insert("concept", TokenType::Concept);
         m.insert("typeof", TokenType::Typeof);
+        m.insert("implicit", TokenType::Implicit);
+        m.insert("explicit", TokenType::Explicit);
         return m;
     };
 }

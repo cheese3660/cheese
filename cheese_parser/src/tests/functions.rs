@@ -1,10 +1,10 @@
 use crate::args;
-use crate::ast::DeclarationFlags;
+use crate::ast::{AstNode, DeclarationFlags, NodeList, NodePtr, OptionalNode};
 use crate::tests::{Error, validate};
-use crate::validation::{AstValidator, v_addition, v_block, v_function, v_function_import, v_implicit_result, v_name, v_none, v_signed_integer_type, v_single, v_string, v_structure, v_tuple_literal, v_type, v_void, v_argument};
+use crate::ast::{v_addition, v_block, v_function, v_function_import, v_implicit_result, v_name, v_none, v_signed_integer_type, v_single, v_string, v_structure, v_tuple_literal, v_type, v_void, v_argument};
 
 
-fn v_single_function<T: ToString>(declaration_flags: DeclarationFlags, name: T, generics: Option<Vec<Box<AstValidator>>>, args: Vec<Box<AstValidator>>, return_type: Option<Box<AstValidator>>, body: Box<AstValidator>) -> Box<AstValidator> {
+fn v_single_function<T: ToString>(declaration_flags: DeclarationFlags, name: T, generics: Option<NodeList>, args: NodeList, return_type: OptionalNode, body: NodePtr) -> NodePtr {
     v_single(
         v_function(
             declaration_flags,

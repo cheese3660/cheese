@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 
 ariadne = {version = "0.4.1", features = ["auto-color"]}
+lazy_static = "1.4.0"

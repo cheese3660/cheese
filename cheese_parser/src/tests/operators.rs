@@ -1,13 +1,13 @@
 use crate::{args, v_map};
-use crate::ast::{DeclarationFlags, Operator};
+use crate::ast::{DeclarationFlags, NodePtr, Operator};
 use crate::tests::{Error, v_empty_def, v_i, validate};
 use std::collections::HashMap;
-use crate::validation::{AstValidator, v_closure, v_const_reference_implicit_capture, v_none, v_single, v_variable_declaration, v_argument, v_bool, v_reference_capture, v_reference, v_constant_reference_capture, v_copy_capture, v_reference_implicit_capture, v_copy_implicit_capture, v_void, v_function, v_signed_integer_type, v_if, v_lesser_than, v_name, v_unary_minus, v_match, v_match_arm, v_match_value, v_match_range, v_match_constraint, v_match_all, v_destructuring_match_array, v_destructuring_match_structure, v_destructuring_match_arm, v_destructuring_match_tuple, v_enum_literal, v_match_enum_tuple, v_match_enum_structure, v_operator, v_self_value, v_block, v_self_type, v_unary_plus, v_dereference, v_not, v_multiplication, v_division, v_modulus, v_addition, v_subtraction, v_left_shift, v_right_shift, v_greater_than, v_lesser_equal, v_greater_equal, v_equal_to, v_not_equal_to, v_and, v_xor, v_or, v_reassign, v_assign, v_add_assign, v_subtract_assign, v_multiply_assign, v_divide_assign, v_modulate_assign, v_shift_left_assign, v_shift_right_assign, v_and_assign, v_or_assign, v_xor_assign};
+use crate::ast::{v_closure, v_const_reference_implicit_capture, v_none, v_single, v_variable_declaration, v_argument, v_bool, v_reference_capture, v_reference, v_constant_reference_capture, v_copy_capture, v_reference_implicit_capture, v_copy_implicit_capture, v_void, v_function, v_signed_integer_type, v_if, v_lesser_than, v_name, v_unary_minus, v_match, v_match_arm, v_match_value, v_match_range, v_match_constraint, v_match_all, v_destructuring_match_array, v_destructuring_match_structure, v_destructuring_match_arm, v_destructuring_match_tuple, v_enum_literal, v_match_enum_tuple, v_match_enum_structure, v_operator, v_self_value, v_block, v_self_type, v_unary_plus, v_dereference, v_not, v_multiplication, v_division, v_modulus, v_addition, v_subtraction, v_left_shift, v_right_shift, v_greater_than, v_lesser_equal, v_greater_equal, v_equal_to, v_not_equal_to, v_and, v_xor, v_or, v_reassign, v_assign, v_add_assign, v_subtract_assign, v_multiply_assign, v_divide_assign, v_modulate_assign, v_shift_left_assign, v_shift_right_assign, v_and_assign, v_or_assign, v_xor_assign, v_const_self_value};
 
 
 
 // We won't have static operator overloading with this version of the language
-fn v_operator_overload_unary(operator: Operator) -> Box<AstValidator> {
+fn v_operator_overload_unary(operator: Operator) -> NodePtr {
     v_single(
         v_operator(
             DeclarationFlags::empty(),
@@ -20,7 +20,7 @@ fn v_operator_overload_unary(operator: Operator) -> Box<AstValidator> {
     )
 }
 
-fn v_operator_overload_binary(operator: Operator) -> Box<AstValidator> {
+fn v_operator_overload_binary(operator: Operator) -> NodePtr {
     v_single(
         v_operator(
             DeclarationFlags::empty(),
@@ -33,7 +33,7 @@ fn v_operator_overload_binary(operator: Operator) -> Box<AstValidator> {
     )
 }
 
-fn v_operator_unary<T: Fn(Box<AstValidator>) -> Box<AstValidator>>(operator: T) -> Box<AstValidator>{
+fn v_operator_unary<T: Fn(NodePtr) -> NodePtr>(operator: T) -> NodePtr{
     v_single(
         v_variable_declaration(
             v_empty_def(),
@@ -42,7 +42,7 @@ fn v_operator_unary<T: Fn(Box<AstValidator>) -> Box<AstValidator>>(operator: T) 
     )
 }
 
-fn v_operator_binary<T: Fn(Box<AstValidator>, Box<AstValidator>) -> Box<AstValidator>>(operator: T) -> Box<AstValidator>{
+fn v_operator_binary<T: Fn(NodePtr, NodePtr) -> NodePtr>(operator: T) -> NodePtr {
     v_single(
         v_variable_declaration(
             v_empty_def(),
@@ -583,5 +583,30 @@ fn xor_assign_overloading() -> Error {
     validate(
         "operator xor= (self, _: Self) {}",
         v_operator_overload_binary(Operator::XorAssign)
+    )
+}
+
+#[test]
+fn cast_overloading() -> Error {
+    validate(
+        "operator @(~self) -> i32 => 0;",
+        v_single(
+            v_operator(
+                DeclarationFlags::empty(),
+                Operator::Cast,
+                None,
+                vec![v_const_self_value()],
+                Some(v_signed_integer_type(32)),
+                v_i(0)
+            )
+        )
+    )
+}
+
+#[test]
+fn move_overloading() -> Error {
+    validate(
+        "operator move(self, _: Self) {}",
+        v_operator_overload_binary(Operator::MoveAssign)
     )
 }

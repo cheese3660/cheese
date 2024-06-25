@@ -1,11 +1,11 @@
 use crate::{args, v_map};
-use crate::ast::DeclarationFlags;
+use crate::ast::{DeclarationFlags, NodeList, NodePtr};
 use crate::tests::{Error, v_empty_def, v_i, validate};
 use std::collections::HashMap;
-use crate::validation::{AstValidator, v_closure, v_const_reference_implicit_capture, v_none, v_single, v_variable_declaration, v_argument, v_bool, v_reference_capture, v_reference, v_constant_reference_capture, v_copy_capture, v_reference_implicit_capture, v_copy_implicit_capture, v_void, v_function, v_signed_integer_type, v_if, v_lesser_than, v_name, v_unary_minus, v_match, v_match_arm, v_match_value, v_match_range, v_match_constraint, v_match_all, v_destructuring_match_array, v_destructuring_match_structure, v_destructuring_match_arm, v_destructuring_match_tuple, v_enum_literal, v_match_enum_tuple, v_match_enum_structure};
+use crate::ast::{v_closure, v_const_reference_implicit_capture, v_none, v_single, v_variable_declaration, v_argument, v_bool, v_reference_capture, v_reference, v_constant_reference_capture, v_copy_capture, v_reference_implicit_capture, v_copy_implicit_capture, v_void, v_function, v_signed_integer_type, v_if, v_lesser_than, v_name, v_unary_minus, v_match, v_match_arm, v_match_value, v_match_range, v_match_constraint, v_match_all, v_destructuring_match_array, v_destructuring_match_structure, v_destructuring_match_arm, v_destructuring_match_tuple, v_enum_literal, v_match_enum_tuple, v_match_enum_structure};
 
 
-fn v_match_y(arms: Vec<Box<AstValidator>>) -> Box<AstValidator> {
+fn v_match_y(arms: NodeList) -> NodePtr {
     v_single(v_variable_declaration(v_empty_def(),v_match(v_name("y"),arms)))
 }
 
@@ -148,7 +148,7 @@ fn destructuring_all_captures_all_constraints() -> Error {
                                                     vec![
                                                         v_match_range(v_i(0),v_i(7))
                                                     ],
-                                                    Some(v_reference_capture("k".to_string()))
+                                                    Some(v_constant_reference_capture("k".to_string()))
                                                 ),
                                             ]
                                         )
@@ -177,7 +177,7 @@ fn destructuring_all_captures_all_constraints() -> Error {
 #[test]
 fn enum_destructuring() -> Error {
     validate(
-        "let x = match (n) {.empty => 0, .integer(0 .. 255 -> small_int) => 1, .integer(_ => big_int) => 2, .add{lhs: constrain is_constant, rhs: constrain is_constant} => 3, .add{lhs: _; rhs: _} => 4, _ => 5};",
+        "let x = match (y) {.empty => 0, .integer(0 .. 255 -> small_int) => 1, .integer(_ -> big_int) => 2, .add{lhs: constrain is_constant; rhs: constrain is_constant} => 3, .add{lhs: _; rhs: _} => 4, _ => 5};",
         v_match_y(
             vec![
                 v_match_arm(

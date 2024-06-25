@@ -68,6 +68,8 @@ pub enum ErrorCode {
     ExpectedClosingBracket,
     ExpectedOperator,
     ExpectedIndexName,
+    ExpectedConstructorType,
+    ExpectedConstructorBodyOrDelete,
 
 
     // Parser advice

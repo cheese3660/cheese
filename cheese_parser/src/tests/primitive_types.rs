@@ -1,6 +1,6 @@
 use crate::ast::DeclarationFlags;
 use crate::tests::{Error, validate};
-use crate::validation::{v_bool, v_compile_time_complex, v_compile_time_float, v_compile_time_integer, v_compile_time_string, v_complex32, v_complex64, v_float32, v_float64, v_no_return, v_opaque, v_program, v_signed_integer_type, v_type, v_unsigned_integer_type, v_variable_definition, v_void};
+use crate::ast::{v_bool, v_compile_time_complex, v_compile_time_float, v_compile_time_integer, v_compile_time_string, v_complex32, v_complex64, v_float32, v_float64, v_no_return, v_opaque, v_program, v_signed_integer_type, v_type, v_unsigned_integer_type, v_variable_definition, v_void};
 
 #[test]
 fn bool() -> Error  {

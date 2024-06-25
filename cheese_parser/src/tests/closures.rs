@@ -1,8 +1,8 @@
 use crate::args;
 use crate::tests::{Error, v_empty_def, validate};
-use crate::validation::{AstValidator, v_closure, v_const_reference_implicit_capture, v_none, v_single, v_variable_declaration, v_argument, v_bool, v_reference_capture, v_reference, v_constant_reference_capture, v_copy_capture, v_reference_implicit_capture, v_copy_implicit_capture, v_void};
+use crate::ast::{v_closure, v_const_reference_implicit_capture, v_none, v_single, v_variable_declaration, v_argument, v_bool, v_reference_capture, v_reference, v_constant_reference_capture, v_copy_capture, v_reference_implicit_capture, v_copy_implicit_capture, v_void, NodeList, OptionalNode, AstNode, NodePtr};
 
-fn v_single_closure(arguments: Vec<Box<AstValidator>>, captures: Vec<Box<AstValidator>>, return_type: Option<Box<AstValidator>>, body: Box<AstValidator>) -> Box<AstValidator> {
+fn v_single_closure(arguments: NodeList, captures: NodeList, return_type: OptionalNode, body: NodePtr) -> NodePtr {
     v_single(
         v_variable_declaration(
             v_empty_def(),

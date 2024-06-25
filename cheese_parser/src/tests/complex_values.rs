@@ -1,7 +1,7 @@
 use crate::ast::DeclarationFlags;
 use crate::object_map;
 use crate::tests::{Error, v_empty_def, v_f, v_i, validate};
-use crate::validation::{v_array_call, v_array_literal, v_bool, v_enum_literal, v_false, v_field_literal, v_function_type, v_name, v_name_reference, v_object_call, v_object_literal, v_program, v_single, v_string, v_true, v_tuple_call, v_tuple_literal, v_typeof, v_variable_declaration, v_void};
+use crate::ast::{v_array_call, v_array_literal, v_bool, v_enum_literal, v_false, v_field_literal, v_function_type, v_name, v_name_reference, v_object_call, v_object_literal, v_program, v_single, v_string, v_true, v_tuple_call, v_tuple_literal, v_typeof, v_variable_declaration, v_void};
 #[test]
 fn explicit_structure_literal() -> Error  {
     validate(

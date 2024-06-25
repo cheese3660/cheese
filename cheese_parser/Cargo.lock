@@ -36,6 +36,7 @@ name = "cheese_diagnostics"
 version = "0.1.0"
 dependencies = [
  "ariadne",
+ "lazy_static",
 ]
 
 [[package]]
@@ -57,6 +58,7 @@ dependencies = [
  "cheese_diagnostics",
  "cheese_lexer",
  "cheese_utilities",
+ "lazy_static",
  "num-bigint",
  "paste",
  "serde_json",

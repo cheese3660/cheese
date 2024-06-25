@@ -39,13 +39,13 @@ use num_bigint::BigInt;
 use cheese_diagnostics::locating::File;
 use cheese_lexer::{Lexer, LexerConfiguration};
 use crate::ast::DeclarationFlags;
-use crate::validation::*;
+use crate::ast::*;
 use super::Parser;
 
 
 type Error = Result<(),&'static str>;
 
-fn validate(program: &str, validator: Box<AstValidator>) -> Error {
+fn validate(program: &str, validator: NodePtr) -> Error {
     let file = File::new("test",program);
     let mut lexer = Lexer::create(file,LexerConfiguration::default());
     let stream = lexer.lex();
@@ -64,16 +64,16 @@ fn validate(program: &str, validator: Box<AstValidator>) -> Error {
     }
 }
 
-fn v_i<T: ToString>(i: T) -> Box<AstValidator> {
+fn v_i<T: ToString>(i: T) -> NodePtr {
     v_integer_literal(BigInt::from_str(i.to_string().as_str()).unwrap())
 }
 
-fn v_f(f: f64) -> Box<AstValidator> {
+fn v_f(f: f64) -> NodePtr {
     v_float_literal(f)
 }
 
 
-fn v_empty_def() -> Box<AstValidator> {
+fn v_empty_def() -> NodePtr {
     v_variable_definition(
         DeclarationFlags::empty(),
         "x".to_string(),

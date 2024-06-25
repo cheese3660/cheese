@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use crate::ast::DeclarationFlags;
 use crate::tests::{Error, v_empty_def, validate};
 use crate::v_map;
-use crate::validation::{v_destructure, v_name_reference, v_program, v_structure_destructure, v_true, v_tuple_destructure, v_underscore, v_variable_declaration, v_variable_definition};
+use crate::ast::{v_destructure, v_name_reference, v_program, v_structure_destructure, v_true, v_tuple_destructure, v_underscore, v_variable_declaration, v_variable_definition};
 
 #[test]
 fn mutable_declaration() -> Error  {

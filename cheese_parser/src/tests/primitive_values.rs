@@ -2,8 +2,8 @@ use std::str::FromStr;
 use num_bigint::{BigInt, Sign};
 use crate::ast::DeclarationFlags;
 use crate::tests::{Error, v_empty_def, v_i, validate};
-use crate::validation::{AstValidator, v_bool, v_false, v_integer_literal, v_none, v_program, v_string_literal, v_true, v_variable_declaration, v_variable_definition};
-use crate::validation::AstValidator::IntegerLiteral;
+use crate::ast::{v_bool, v_false, v_integer_literal, v_none, v_program, v_string_literal, v_true, v_variable_declaration, v_variable_definition};
+use crate::ast::AstNodeData::IntegerLiteral;
 
 
 

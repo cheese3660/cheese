@@ -1,9 +1,9 @@
-use crate::ast::DeclarationFlags;
+use crate::ast::{DeclarationFlags, NodePtr};
 use crate::{field_map, object_map};
 use crate::tests::{Error, v_empty_def, v_i, validate};
-use crate::validation::{AstValidator, v_bool, v_enum, v_enum_member, v_name_reference, v_program, v_signed_integer_type, v_structure, v_true, v_type_declaration, v_variable_declaration, v_field, v_reference, v_array_type, v_unknown_size, v_slice, v_function_type, v_void, v_name, v_interface};
+use crate::ast::{v_bool, v_enum, v_enum_member, v_name_reference, v_program, v_signed_integer_type, v_structure, v_true, v_type_declaration, v_variable_declaration, v_field, v_reference, v_array_type, v_unknown_size, v_slice, v_function_type, v_void, v_name, v_interface};
 
-fn v_type_decl(alias: Box<AstValidator>) -> Box<AstValidator> {
+fn v_type_decl(alias: NodePtr) -> NodePtr {
     v_program(vec![
         v_type_declaration(
             DeclarationFlags::empty(),

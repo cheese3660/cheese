@@ -24,6 +24,7 @@ name = "cheese_diagnostics"
 version = "0.1.0"
 dependencies = [
  "ariadne",
+ "lazy_static",
 ]
 
 [[package]]
