@@ -1,10 +1,19 @@
 fn abs(arg: f64) -> f64 => if (arg < 0) -arg else arg;
 
-type HSL is struct {
-    h:f64,
-    s:f64,
-    l:f64,
-    fn to_rgb(~self) public -> RGB {
+struct HSL {
+    public h: f64,
+    public s: f64,
+    public l: f64,
+};
+
+impl HSL {
+    constructor new(self, h: f64, s: f64, l: f64) {
+        self.h = h;
+        self.s = s;
+        self.l = l;
+    }
+
+    public fn to_rgb(~self) -> RGB {
         let c = (1.0 - abs(2.0 * self.l - 1.0)) * self.s;
         let x = c * (1.0 - abs((self.h / 60.0) % 2.0 - 1.0));
         let m = self.l - c/2.0;
@@ -12,17 +21,17 @@ type HSL is struct {
         let (rprime, gprime, bprime) = match (h60)
         {
             0 =>
-                .(c,x,0.0),
+                (c,x,0.0),
             1 =>
-                .(x,c,0.0),
+                (x,c,0.0),
             2 =>
-                .(0.0,x,c),
+                (0.0,x,c),
             3 =>
-                .(x,0.0,c),
+                (x,0.0,c),
             4 =>
-                .(c,0.0,x),
+                (c,0.0,x),
             _ =>
-                .(0.0,0.0,0.0),
+                (0.0,0.0,0.0),
         };
         .{
             r: ((rprime+m)*255)@u8,
@@ -30,20 +39,16 @@ type HSL is struct {
             b: ((bprime+m)*255)@u8,
         }
     }
+}
+
+struct RGB {
+    public r: u8,
+    public g: u8,
+    public b: u8,
 };
 
-type RGB is struct {
-    r:u8,
-    g:u8,
-    b:u8,
-};
-
-fn main() entry -> u8 {
-    let hsl = HSL{
-        h: 130.0,
-        s: 0.5,
-        l: 0.5
-    };
+entry fn main() -> u8 {
+    let hsl = HSL(130.0, 0.5, 0.5);
 
     puts("HSL(130,0.5,0.5) -> RGB = ");
 
@@ -56,7 +61,6 @@ fn main() entry -> u8 {
     puts(", B: ");
     put_int(rgb.b);
     _ = putchar('\n');
-
     0
 }
 
@@ -65,13 +69,13 @@ fn main() entry -> u8 {
 
 fn put_int(i: u64) -> void
 {
-    def chars mut: [21]u8;
+    def mut chars: [21]u8;
     _ = puts(_ui64toa(i, chars,10));
 }
 
 fn puts(s: [?]~u8) -> void
 {
-    let i mut: u64 = 0;
+    let mut i: u64 = 0;
     while (s[i] != 0)
     {
         _ = putchar(s[i]);
@@ -79,6 +83,6 @@ fn puts(s: [?]~u8) -> void
     }
 }
 
-fn putchar(c: u8) public -> i32 import;
-fn atoi(s: [?]~u8) public -> i32 import;
-fn _ui64toa(value: u64, buffer: [?]u8, radix: i32) public -> [?]~u8 import;
+public import fn putchar(c: u8) -> i32;
+public import fn atoi(s: [?]~u8) -> i32;
+public import fn _ui64toa(value: u64, buffer: [?]u8, radix: i32) -> [?]~u8;

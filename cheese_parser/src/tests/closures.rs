@@ -1,11 +1,10 @@
 use crate::args;
-use crate::tests::{Error, v_empty_def, validate};
-use crate::ast::{v_closure, v_const_reference_implicit_capture, v_none, v_single, v_variable_declaration, v_argument, v_bool, v_reference_capture, v_reference, v_constant_reference_capture, v_copy_capture, v_reference_implicit_capture, v_copy_implicit_capture, v_void, NodeList, OptionalNode, AstNode, NodePtr};
+use crate::tests::{Error, v_empty_static, validate};
+use crate::ast::{v_closure, v_const_reference_implicit_capture, v_none, v_single, v_variable_declaration, v_argument, v_bool, v_reference_capture, v_reference, v_constant_reference_capture, v_copy_capture, v_reference_implicit_capture, v_copy_implicit_capture, v_void, NodeList, OptionalNode, AstNode, NodePtr, v_static_variable_declaration, DeclarationFlags};
 
 fn v_single_closure(arguments: NodeList, captures: NodeList, return_type: OptionalNode, body: NodePtr) -> NodePtr {
     v_single(
-        v_variable_declaration(
-            v_empty_def(),
+        v_empty_static(
             v_closure(
                 arguments,
                 captures,
@@ -19,7 +18,7 @@ fn v_single_closure(arguments: NodeList, captures: NodeList, return_type: Option
 #[test]
 fn no_arguments_implicit_captures_no_return_type() -> Error {
     validate(
-        "let x = || none;",
+        "static x = || none;",
         v_single_closure(
             vec![],
             vec![
@@ -34,7 +33,7 @@ fn no_arguments_implicit_captures_no_return_type() -> Error {
 #[test]
 fn one_argument_implicit_captures_no_return_type() -> Error {
     validate(
-        "let x = |y:bool| none;",
+        "static x = |y:bool| none;",
         v_single_closure(
             args![
                 "y" => v_bool()
@@ -51,7 +50,7 @@ fn one_argument_implicit_captures_no_return_type() -> Error {
 #[test]
 fn multiple_arguments_implicit_captures_no_return_type() -> Error {
     validate(
-        "let x = |y:bool,z:bool| none;",
+        "static x = |y:bool,z:bool| none;",
         v_single_closure(
             args![
                 "y" => v_bool(),
@@ -140,7 +139,7 @@ fn no_arguments_implicit_reference_capture_no_return_type() -> Error {
 #[test]
 fn no_arguments_implicit_copy_capture_no_return_type() -> Error {
     validate(
-        "let x = ||[=] none;",
+        "static x = ||[=] none;",
         v_single_closure(
             vec![],
             vec![v_copy_implicit_capture()],
@@ -153,7 +152,7 @@ fn no_arguments_implicit_copy_capture_no_return_type() -> Error {
 #[test]
 fn no_arguments_explicit_constant_reference_capture_no_return_type() -> Error {
     validate(
-        "let x = ||[*~y] none;",
+        "static x = ||[*~y] none;",
         v_single_closure(
             vec![],
             captures![~y],
@@ -166,7 +165,7 @@ fn no_arguments_explicit_constant_reference_capture_no_return_type() -> Error {
 #[test]
 fn no_arguments_explicit_reference_capture_no_return_type() -> Error {
     validate(
-        "let x = ||[*y] none;",
+        "static x = ||[*y] none;",
         v_single_closure(
             vec![],
             captures![*y],
@@ -179,7 +178,7 @@ fn no_arguments_explicit_reference_capture_no_return_type() -> Error {
 #[test]
 fn no_arguments_explicit_copy_capture_no_return_type() -> Error {
     validate(
-        "let x = ||[=y] none;",
+        "static x = ||[=y] none;",
         v_single_closure(
             vec![],
             captures![=y],
@@ -192,7 +191,7 @@ fn no_arguments_explicit_copy_capture_no_return_type() -> Error {
 #[test]
 fn no_arguments_multiple_captures_no_return_type() -> Error {
     validate(
-        "let x = ||[*a,=b,*~c,*~] none;",
+        "static x = ||[*a,=b,*~c,*~] none;",
         v_single_closure(
             vec![],
             captures_const![
@@ -209,7 +208,7 @@ fn no_arguments_multiple_captures_no_return_type() -> Error {
 #[test]
 fn no_arguments_implicit_captures_return_type() -> Error {
     validate(
-        "let x = ||->void none;",
+        "static x = ||->void none;",
         v_single_closure(
             vec![],
             vec![v_const_reference_implicit_capture()],

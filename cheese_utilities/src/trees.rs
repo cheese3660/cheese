@@ -92,9 +92,9 @@ impl NodeBuilder {
         self.add_child(value.to_node())
     }
 
-    pub fn add_children<T: Iterator>(&mut self, value: T) -> &mut Self
+    pub fn add_children<T: IntoIterator>(&mut self, value: T) -> &mut Self
         where
-            <T as Iterator>::Item: DisplayableTree
+            <T as IntoIterator>::Item: DisplayableTree
     {
         self.node.data = List(vec![]);
         for node in value {
@@ -126,9 +126,9 @@ impl NodeBuilder {
         self.add_field(field_name, value.to_node())
     }
 
-    pub fn list_field<T1: ToString, T2: Iterator>(&mut self, field_name: T1, value: T2) -> &mut Self
+    pub fn list_field<T1: ToString, T2: IntoIterator>(&mut self, field_name: T1, value: T2) -> &mut Self
         where
-            <T2 as Iterator>::Item: DisplayableTree
+            <T2 as IntoIterator>::Item: DisplayableTree
     {
         self.add_field(field_name, Self::new_unnamed_list(value))
     }
@@ -137,9 +137,9 @@ impl NodeBuilder {
         Self::new(name, color).build()
     }
 
-    pub fn new_unnamed_list<T: Iterator>(list: T) -> Box<DisplayNode>
+    pub fn new_unnamed_list<T: IntoIterator>(list: T) -> Box<DisplayNode>
         where
-            <T as Iterator>::Item: DisplayableTree
+            <T as IntoIterator>::Item: DisplayableTree
     {
         Self::new_unnamed().add_children(list).build()
     }

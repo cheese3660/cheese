@@ -1,16 +1,17 @@
-use crate::ast::DeclarationFlags;
-use crate::tests::{Error, validate};
+use crate::ast::{DeclarationFlags, v_false, v_imaginary_literal, v_none, v_static_variable_declaration};
+use crate::tests::{Error, v_f, v_i, validate};
 use crate::ast::{v_bool, v_compile_time_complex, v_compile_time_float, v_compile_time_integer, v_compile_time_string, v_complex32, v_complex64, v_float32, v_float64, v_no_return, v_opaque, v_program, v_signed_integer_type, v_type, v_unsigned_integer_type, v_variable_definition, v_void};
 
 #[test]
 fn bool() -> Error  {
     validate(
-        "def x: bool;",
+        "let x: bool = false;",
         v_program(vec![
-            v_variable_definition(
+            v_static_variable_declaration(
                 DeclarationFlags::empty(),
                 "x".to_string(),
-                Some(v_bool())
+                Some(v_bool()),
+                v_false()
             )
         ])
     )
@@ -19,12 +20,13 @@ fn bool() -> Error  {
 #[test]
 fn i1() -> Error  {
     validate(
-        "def x: i1;",
+        "let x: i1 = 1;",
         v_program(vec![
-            v_variable_definition(
+            v_static_variable_declaration(
                 DeclarationFlags::empty(),
                 "x".to_string(),
-                Some(v_signed_integer_type(1))
+                Some(v_signed_integer_type(1)),
+                v_i(1)
             )
         ])
     )
@@ -33,12 +35,13 @@ fn i1() -> Error  {
 #[test]
 fn i64() -> Error  {
     validate(
-        "def x: i64;",
+        "let x: i64 = 322;",
         v_program(vec![
-            v_variable_definition(
+            v_static_variable_declaration(
                 DeclarationFlags::empty(),
                 "x".to_string(),
-                Some(v_signed_integer_type(64))
+                Some(v_signed_integer_type(64)),
+                v_i(322)
             )
         ])
     )
@@ -47,12 +50,13 @@ fn i64() -> Error  {
 #[test]
 fn i65535() -> Error {
     validate(
-        "def x: i65535;",
+        "let x: i65535 = 12345678901234567890;",
         v_program(vec![
-            v_variable_definition(
+            v_static_variable_declaration(
                 DeclarationFlags::empty(),
                 "x".to_string(),
-                Some(v_signed_integer_type(65535))
+                Some(v_signed_integer_type(65535)),
+                v_i("12345678901234567890")
             )
         ])
     )
@@ -61,12 +65,13 @@ fn i65535() -> Error {
 #[test]
 fn u1() -> Error  {
     validate(
-        "def x: u1;",
+        "let x: u1 = 1;",
         v_program(vec![
-            v_variable_definition(
+            v_static_variable_declaration(
                 DeclarationFlags::empty(),
                 "x".to_string(),
-                Some(v_unsigned_integer_type(1))
+                Some(v_unsigned_integer_type(1)),
+                v_i(1)
             )
         ])
     )
@@ -75,12 +80,13 @@ fn u1() -> Error  {
 #[test]
 fn u64() -> Error  {
     validate(
-        "def x: u64;",
+        "let x: u64;",
         v_program(vec![
-            v_variable_definition(
+            v_static_variable_declaration(
                 DeclarationFlags::empty(),
                 "x".to_string(),
-                Some(v_unsigned_integer_type(64))
+                Some(v_unsigned_integer_type(64)),
+                v_i(1)
             )
         ])
     )
@@ -89,12 +95,13 @@ fn u64() -> Error  {
 #[test]
 fn u65535() -> Error {
     validate(
-        "def x: u65535;",
+        "let x: u65535 = 1;",
         v_program(vec![
-            v_variable_definition(
+            v_static_variable_declaration(
                 DeclarationFlags::empty(),
                 "x".to_string(),
-                Some(v_unsigned_integer_type(65535))
+                Some(v_unsigned_integer_type(65535)),
+                v_i(1)
             )
         ])
     )
@@ -103,12 +110,13 @@ fn u65535() -> Error {
 #[test]
 fn f32() -> Error {
     validate(
-        "def x: f32;",
+        "let x: f32 = 0.0;",
         v_program(vec![
-            v_variable_definition(
+            v_static_variable_declaration(
                 DeclarationFlags::empty(),
                 "x".to_string(),
-                Some(v_float32())
+                Some(v_float32()),
+                v_f(0.0)
             )
         ])
     )
@@ -117,12 +125,13 @@ fn f32() -> Error {
 #[test]
 fn f64() -> Error {
     validate(
-        "def x: f64;",
+        "let x: f64 = 0.0;",
         v_program(vec![
-            v_variable_definition(
+            v_static_variable_declaration(
                 DeclarationFlags::empty(),
                 "x".to_string(),
-                Some(v_float64())
+                Some(v_float64()),
+                v_f(0.0)
             )
         ])
     )
@@ -131,12 +140,13 @@ fn f64() -> Error {
 #[test]
 fn c32() -> Error {
     validate(
-        "def x: c32;",
+        "let x: c32 = 0.0I;",
         v_program(vec![
-            v_variable_definition(
+            v_static_variable_declaration(
                 DeclarationFlags::empty(),
                 "x".to_string(),
-                Some(v_complex32())
+                Some(v_complex32()),
+                v_imaginary_literal(0.0)
             )
         ])
     )
@@ -145,12 +155,13 @@ fn c32() -> Error {
 #[test]
 fn c64() -> Error {
     validate(
-        "def x: c64;",
+        "let x: c64 = 0.0I;",
         v_program(vec![
-            v_variable_definition(
+            v_static_variable_declaration(
                 DeclarationFlags::empty(),
                 "x".to_string(),
-                Some(v_complex64())
+                Some(v_complex64()),
+                v_imaginary_literal(0.0)
             )
         ])
     )
@@ -158,12 +169,13 @@ fn c64() -> Error {
 #[test]
 fn opaque() -> Error {
     validate(
-        "def x: opaque;",
+        "let x: opaque = none;",
         v_program(vec![
-            v_variable_definition(
+            v_static_variable_declaration(
                 DeclarationFlags::empty(),
                 "x".to_string(),
-                Some(v_opaque())
+                Some(v_opaque()),
+                v_none()
             )
         ])
     )
@@ -171,12 +183,13 @@ fn opaque() -> Error {
 #[test]
 fn void() -> Error {
     validate(
-        "def x: void;",
+        "let x: void = none;",
         v_program(vec![
-            v_variable_definition(
+            v_static_variable_declaration(
                 DeclarationFlags::empty(),
                 "x".to_string(),
-                Some(v_void())
+                Some(v_void()),
+                v_none()
             )
         ])
     )
@@ -185,12 +198,13 @@ fn void() -> Error {
 #[test]
 fn comptime_float() -> Error {
     validate(
-        "def x: comptime_float;",
+        "let x: comptime_float = 0.0;",
         v_program(vec![
-            v_variable_definition(
+            v_static_variable_declaration(
                 DeclarationFlags::empty(),
                 "x".to_string(),
-                Some(v_compile_time_float())
+                Some(v_compile_time_float()),
+                v_f(0.0)
             )
         ])
     )
@@ -200,12 +214,13 @@ fn comptime_float() -> Error {
 #[test]
 fn comptime_complex() -> Error {
     validate(
-        "def x: comptime_complex;",
+        "let x: comptime_complex = 0.0I;",
         v_program(vec![
-            v_variable_definition(
+            v_static_variable_declaration(
                 DeclarationFlags::empty(),
                 "x".to_string(),
-                Some(v_compile_time_complex())
+                Some(v_compile_time_complex()),
+                v_imaginary_literal(0.0)
             )
         ])
     )
@@ -214,12 +229,13 @@ fn comptime_complex() -> Error {
 #[test]
 fn comptime_int() -> Error {
     validate(
-        "def x: comptime_int;",
+        "let x: comptime_int = none;",
         v_program(vec![
-            v_variable_definition(
+            v_static_variable_declaration(
                 DeclarationFlags::empty(),
                 "x".to_string(),
-                Some(v_compile_time_integer())
+                Some(v_compile_time_integer()),
+                v_none()
             )
         ])
     )
@@ -228,12 +244,13 @@ fn comptime_int() -> Error {
 #[test]
 fn comptime_string() -> Error {
     validate(
-        "def x: comptime_string;",
+        "let x: comptime_string = none;",
         v_program(vec![
-            v_variable_definition(
+            v_static_variable_declaration(
                 DeclarationFlags::empty(),
                 "x".to_string(),
-                Some(v_compile_time_string())
+                Some(v_compile_time_string()),
+                v_none()
             )
         ])
     )
@@ -242,12 +259,13 @@ fn comptime_string() -> Error {
 #[test]
 fn noreturn() -> Error {
     validate(
-        "def x: noreturn;",
+        "let x: noreturn = none;",
         v_program(vec![
-            v_variable_definition(
+            v_static_variable_declaration(
                 DeclarationFlags::empty(),
                 "x".to_string(),
-                Some(v_no_return())
+                Some(v_no_return()),
+                v_none()
             )
         ])
     )
@@ -255,12 +273,13 @@ fn noreturn() -> Error {
 #[test]
 fn type_type() -> Error {
     validate(
-        "def x: type;",
+        "let x: type = none;",
         v_program(vec![
-            v_variable_definition(
+            v_static_variable_declaration(
                 DeclarationFlags::empty(),
                 "x".to_string(),
-                Some(v_type())
+                Some(v_type()),
+                v_none()
             )
         ])
     )

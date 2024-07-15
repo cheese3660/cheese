@@ -1,7 +1,7 @@
 use ariadne::{Color, ColorGenerator};
 use cheese_lexer::*;
 use cheese_diagnostics::locating::*;
-use cheese_parser::Parser;
+use cheese_parser::parser::Parser;
 use cheese_utilities::trees::NodeBuilder;
 
 fn main() {

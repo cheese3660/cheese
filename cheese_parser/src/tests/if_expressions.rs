@@ -1,6 +1,6 @@
 use crate::args;
 use crate::ast::DeclarationFlags;
-use crate::tests::{Error, v_empty_def, v_i, validate};
+use crate::tests::{Error, v_empty_static, v_i, validate};
 use crate::ast::{v_closure, v_const_reference_implicit_capture, v_none, v_single, v_variable_declaration, v_argument, v_bool, v_reference_capture, v_reference, v_constant_reference_capture, v_copy_capture, v_reference_implicit_capture, v_copy_implicit_capture, v_void, v_function, v_signed_integer_type, v_if, v_lesser_than, v_name, v_unary_minus};
 
 #[test]
@@ -35,8 +35,7 @@ fn if_unwrapping_copy() -> Error {
     validate(
         "let x = if (y: z) z;",
         v_single(
-            v_variable_declaration(
-                v_empty_def(),
+            v_empty_static(
                 v_if(
                     v_name("y"),
                     Some(v_copy_capture("z".to_string())),
@@ -53,8 +52,7 @@ fn if_unwrapping_ref() -> Error {
     validate(
         "let x = if (y: *z) z;",
         v_single(
-            v_variable_declaration(
-                v_empty_def(),
+            v_empty_static(
                 v_if(
                     v_name("y"),
                     Some(v_reference_capture("z".to_string())),
@@ -71,8 +69,7 @@ fn if_unwrapping_constant_ref() -> Error {
     validate(
         "let x = if (y: *~z) z;",
         v_single(
-            v_variable_declaration(
-                v_empty_def(),
+            v_empty_static(
                 v_if(
                     v_name("y"),
                     Some(v_constant_reference_capture("z".to_string())),

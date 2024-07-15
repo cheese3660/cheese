@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::fmt::{Display, format, Formatter, Pointer};
+use std::fmt::{Arguments, Display, format, Formatter, Pointer};
 use std::fs::canonicalize;
 use ariadne::{Color, Fmt};
 use bitflags::bitflags;
@@ -293,7 +293,7 @@ pub enum AstNodeData {
     // Continue := continue
     Continue,
     // EmptyBreak := break;
-    EmptyBreak,
+    Break,
     // EmptyReturn := return;
     EmptyReturn,
     // SelfValue := self
@@ -331,8 +331,8 @@ pub enum AstNodeData {
     IntegerLiteral(BigInt),
     // NameReference := [identifier]
     NameReference(String),
-    // UnnamedBlock := { ... }
-    UnnamedBlock(NodeList),
+    // TypeName := [identifier]
+    TypeName(String),
     // TupleLiteral := .( ... )
     TupleLiteral(NodeList),
     // ArrayLiteral := .[ ... ]
@@ -351,8 +351,6 @@ pub enum AstNodeData {
     ObjectLiteral(NodeList),
     // Block := { ... }
     Block(NodeList),
-    // Break := break [value]
-    Break(NodePtr),
     // Return := return [value]
     Return(NodePtr),
     // Yield  := yield [value]
@@ -381,6 +379,10 @@ pub enum AstNodeData {
     ImplicitResult(NodePtr),
     // ImplicitArray := [](~)[subtype]
     Typeof(NodePtr),
+    // Just a simple import statement beginning, referencing the tree
+    Import(NodePtr),
+    // An argument consisting of only a name
+    InferredArgument(String),
     // Typeof := typeof type
     ImplicitArray {
         constant: bool,
@@ -407,16 +409,17 @@ pub enum AstNodeData {
         functional: NodePtr,
         args: NodeList,
     },
-    // NamedBlock := :(name) { ... }
-    NamedBlock {
+    // NamedExpression := :name expr
+    NamedExpression {
         name: String,
-        body: NodeList,
+        expr: NodePtr,
     },
-    // NamedBreak := yield(name) [value]
-    NamedBreak {
+    // NamedYield := yield :name [value]
+    NamedYield {
         name: String,
         value: NodePtr,
     },
+    NamedBreak(String),
     // ObjectCall := [lhs]{ ... }
     ObjectCall {
         functional: NodePtr,
@@ -460,6 +463,9 @@ pub enum AstNodeData {
     // DestructuringMatchArray := .[ ... ]
     DestructuringMatchArray(NodeList),
     Enum {
+        flags: DeclarationFlags,
+        name: String,
+        generic_arguments: Option<NodeList>,
         containing_type: OptionalNode,
         children: NodeList,
     },
@@ -605,7 +611,8 @@ pub enum AstNodeData {
         begin: NodePtr,
         end: NodePtr,
     },
-    // TypeDeclaration := type [name](<...>) is [type]
+    // TypeDeclaration := type [name] is [type]
+
     TypeDeclaration {
         flags: DeclarationFlags,
         name: String,
@@ -621,16 +628,39 @@ pub enum AstNodeData {
         name: Option<String>,
         argument_type: NodePtr,
     },
-    Import {
-        path: String,
+
+    // project is a special node here (equivalent to crate)
+
+    ImportStar,
+    ImportTree {
         name: String,
+        children: NodeList,
     },
 
     Structure {
+        flags: DeclarationFlags,
+        name: String,
         is_tuple: bool,
-        interfaces: NodeList,
+        generic_arguments: Option<NodeList>,
         children: NodeList,
     },
+
+    // This is to reference another file as a module, like how rust does it
+    ModuleReference {
+        flags: DeclarationFlags,
+        name: String,
+    },
+
+    // This declares a module inline to a file
+    ModuleDeclaration {
+        flags: DeclarationFlags,
+        name: String,
+        children: NodeList
+    },
+
+    // This is the type of files
+    Module(NodeList),
+
 
     FunctionPrototype {
         flags: DeclarationFlags,
@@ -685,7 +715,12 @@ pub enum AstNodeData {
         body: NodePtr,
     },
 
-    // Not going to implement generators in the C version of this
+    StaticVariableDeclaration {
+        flags: DeclarationFlags,
+        name: String,
+        variable_type: OptionalNode,
+        value: NodePtr
+    },
 
     VariableDeclaration {
         definition: NodePtr,
@@ -706,7 +741,6 @@ pub enum AstNodeData {
     },
 
     AnonymousFunction {
-        flags: DeclarationFlags,
         arguments: NodeList,
         return_type: OptionalNode, // If there is no return type it is assumed to be void
         body: NodePtr,
@@ -716,6 +750,31 @@ pub enum AstNodeData {
         flags: DeclarationFlags,
         arguments: NodeList,
         return_type: NodePtr,
+    },
+
+
+    // This is using Fn instead of fn, to define a type in a Fn(...) -> ... syntax, rather than $Fn::<fn(...) -> ...>
+    FunctionTraitType {
+        arguments: NodeList,
+        return_type: NodePtr
+    },
+
+    // This instead uses IFn instead of fn to define a type in a IFn(...) -> ... syntax, rather than $IFn::<fn(...) -> ...>
+    FunctionInterfaceType {
+        arguments: NodeList,
+        return_type: NodePtr
+    },
+
+    // This is using Fn instead of fn, to define a type in a FnMut(...) -> ... syntax, rather than $FnMut::<fn(...) -> ...>
+    MutableFunctionTraitType {
+        arguments: NodeList,
+        return_type: NodePtr
+    },
+
+    // This instead uses IFn instead of fn to define a type in a IFnMut(...) -> ... syntax, rather than $IFnMut::<fn(...) -> ...>
+    MutableFunctionInterfaceType {
+        arguments: NodeList,
+        return_type: NodePtr
     },
 
     StructureDestructure(NodeDict),
@@ -732,9 +791,10 @@ pub enum AstNodeData {
     },
 
     Interface {
-        interfaces: NodeList,
+        flags: DeclarationFlags,
+        name: String,
+        generic_arguments: Option<NodeList>,
         children: NodeList,
-        dynamic: bool,
     },
 
     If {
@@ -791,7 +851,8 @@ pub enum AstNodeData {
     GenericInstanceReference {
         referee: NodePtr,
         generic_args: NodeList
-    }
+    },
+    Tuple(NodeList)
 }
 
 impl DisplayableTree for AstNode {
@@ -830,7 +891,7 @@ impl DisplayableTree for AstNodeData {
             AstNodeData::None => NodeBuilder::new_terminal("none",VALUE_COLOR),
             AstNodeData::Underscore => NodeBuilder::new_terminal('_',NAME_COLOR),
             AstNodeData::Continue => NodeBuilder::new_terminal("continue",KEYWORD_COLOR),
-            AstNodeData::EmptyBreak => NodeBuilder::new_terminal("break",KEYWORD_COLOR),
+            AstNodeData::Break => NodeBuilder::new_terminal("break", KEYWORD_COLOR),
             AstNodeData::EmptyReturn => NodeBuilder::new_terminal("return",KEYWORD_COLOR),
             AstNodeData::SelfValue => NodeBuilder::new_terminal("self",NAME_COLOR),
             AstNodeData::ConstSelfValue => NodeBuilder::new_terminal("~self",NAME_COLOR),
@@ -849,17 +910,15 @@ impl DisplayableTree for AstNodeData {
             AstNodeData::ImaginaryLiteral(i) => NodeBuilder::new_terminal(format!("{i}I"),VALUE_COLOR),
             AstNodeData::IntegerLiteral(i) => NodeBuilder::new_terminal(i,VALUE_COLOR),
             AstNodeData::NameReference(name) => NodeBuilder::new_terminal(name,NAME_COLOR),
-            AstNodeData::UnnamedBlock(children) => NodeBuilder::new("unnamed block",KEYWORD_COLOR).add_children(children.iter()).build(),
-            AstNodeData::TupleLiteral(children) => NodeBuilder::new("tuple literal",OTHER_COLOR).add_children(children.iter()).build(),
-            AstNodeData::ArrayLiteral(children) => NodeBuilder::new("array literal",OTHER_COLOR).add_children(children.iter()).build(),
+            AstNodeData::TupleLiteral(children) => NodeBuilder::new("tuple literal",OTHER_COLOR).add_children(children).build(),
+            AstNodeData::ArrayLiteral(children) => NodeBuilder::new("array literal",OTHER_COLOR).add_children(children).build(),
             AstNodeData::EnumLiteral(name) => NodeBuilder::new("enum literal",OTHER_COLOR).make_inline(name, NAME_COLOR).build(),
             AstNodeData::BuiltinReference(name) => NodeBuilder::new("builtin reference",OTHER_COLOR).make_inline(name, METHOD_COLOR).build(),
             AstNodeData::CopyCapture(name) => NodeBuilder::new("copy capture",OTHER_COLOR).make_inline(name, NAME_COLOR).build(),
             AstNodeData::ReferenceCapture(name) => NodeBuilder::new("reference capture",OTHER_COLOR).make_inline(name, NAME_COLOR).build(),
             AstNodeData::ConstantReferenceCapture(name) => NodeBuilder::new("constant reference capture",OTHER_COLOR).make_inline(name, NAME_COLOR).build(),
-            AstNodeData::ObjectLiteral(children) => NodeBuilder::new("object block",OTHER_COLOR).add_children(children.iter()).build(),
-            AstNodeData::Block(children) => NodeBuilder::new("block",KEYWORD_COLOR).add_children(children.iter()).build(),
-            AstNodeData::Break(child) => NodeBuilder::new("break",KEYWORD_COLOR).convert_child(child).build(),
+            AstNodeData::ObjectLiteral(children) => NodeBuilder::new("object block",OTHER_COLOR).add_children(children).build(),
+            AstNodeData::Block(children) => NodeBuilder::new("block",KEYWORD_COLOR).add_children(children).build(),
             AstNodeData::Return(child) => NodeBuilder::new("return",KEYWORD_COLOR).convert_child(child).build(),
             AstNodeData::Yield(child) => NodeBuilder::new("yield",KEYWORD_COLOR).convert_child(child).build(),
             AstNodeData::Not(child) => NodeBuilder::new("not",KEYWORD_COLOR).convert_child(child).build(),
@@ -877,36 +936,37 @@ impl DisplayableTree for AstNodeData {
             AstNodeData::ImplicitArray { constant, subtype } => NodeBuilder::new(if *constant { "implicit constant array type" } else {"implicit array type"},TYPE_COLOR).convert_child(subtype).build(),
             AstNodeData::Slice { constant, subtype } => NodeBuilder::new(if *constant { "constant slice type" } else {"slice type"},TYPE_COLOR).convert_child(subtype).build(),
             AstNodeData::Reference { constant, subtype } => NodeBuilder::new(if *constant { "constant reference type" } else {"reference type"},TYPE_COLOR).convert_child(subtype).build(),
+            AstNodeData::NamedBreak(name) => NodeBuilder::new_terminal(name,METHOD_COLOR),
             AstNodeData::TupleCall { functional, args } =>
                 NodeBuilder::new("()",KEYWORD_COLOR)
                     .convert_field("value",functional)
-                    .list_field("arguments",args.iter())
+                    .list_field("arguments",args)
                     .build(),
             AstNodeData::ArrayCall { functional, args } =>
                 NodeBuilder::new("[]",KEYWORD_COLOR)
                     .convert_field("value",functional)
-                    .list_field("arguments",args.iter())
+                    .list_field("arguments",args)
                     .build(),
-            AstNodeData::NamedBlock { name, body } =>
-                NodeBuilder::new("named block",KEYWORD_COLOR)
+            AstNodeData::NamedExpression { name, expr } =>
+                NodeBuilder::new("named expression",KEYWORD_COLOR)
                     .make_field("name",name,METHOD_COLOR)
-                    .list_field("body",body.iter())
+                    .convert_field("expression",expr)
                     .build(),
-            AstNodeData::NamedBreak { name, value } =>
-                NodeBuilder::new("break(...)",KEYWORD_COLOR)
+            AstNodeData::NamedYield { name, value } =>
+                NodeBuilder::new("named yield",KEYWORD_COLOR)
                     .make_field("name",name,METHOD_COLOR)
                     .convert_field("value",value)
                     .build(),
             AstNodeData::ObjectCall { functional, args } =>
                 NodeBuilder::new("{}",KEYWORD_COLOR)
                     .convert_field("value",functional)
-                    .list_field("arguments",args.iter())
+                    .list_field("arguments",args)
                     .build(),
             AstNodeData::ErrorNode { message, .. } => NodeBuilder::new_terminal(message,Color::BrightRed),
             AstNodeData::Match { value, arms } =>
                 NodeBuilder::new("match",KEYWORD_COLOR)
                     .convert_field("value",value)
-                    .list_field("arms",arms.iter())
+                    .list_field("arms",arms)
                     .build(),
             AstNodeData::MatchRange { begin, end } => NodeBuilder::new_binary("match range",KEYWORD_COLOR,begin,end),
             AstNodeData::DestructuringMatchArm { matches, store } => {
@@ -914,7 +974,7 @@ impl DisplayableTree for AstNodeData {
                 match store {
                     Option::None => builder.make_field("store into", "_",NAME_COLOR),
                     Some(store) => builder.convert_field("store into",store),
-                }.list_field("matches",matches.iter()).build()
+                }.list_field("matches",matches).build()
             }
             AstNodeData::MatchEnumStructure { enum_identifier, children } => {
                 let mut builder = NodeBuilder::new("enum structure match",KEYWORD_COLOR);
@@ -929,7 +989,7 @@ impl DisplayableTree for AstNodeData {
             AstNodeData::MatchEnumTuple { enum_identifier, children } =>
                 NodeBuilder::new("enum tuple match", KEYWORD_COLOR)
                     .make_field("id",enum_identifier,NAME_COLOR)
-                    .list_field("fields",children.iter())
+                    .list_field("fields",children)
                     .build(),
             AstNodeData::MatchValue(value) => value.to_node(),
             AstNodeData::MatchConstraint(constraint) =>
@@ -945,16 +1005,12 @@ impl DisplayableTree for AstNodeData {
             }
             AstNodeData::DestructuringMatchTuple(matches) =>
                 NodeBuilder::new("tuple match",KEYWORD_COLOR)
-                    .add_children(matches.iter())
+                    .add_children(matches)
                     .build(),
             AstNodeData::DestructuringMatchArray(matches) =>
                 NodeBuilder::new("array match",KEYWORD_COLOR)
-                    .add_children(matches.iter())
+                    .add_children(matches)
                     .build(),
-            AstNodeData::Enum { containing_type, children } => match containing_type {
-                Option::None => NodeBuilder::new("enum",TYPE_COLOR).add_children(children.iter()).build(),
-                Some(containing_type) => NodeBuilder::new("enum",TYPE_COLOR).convert_field("containing type",containing_type).list_field("values",children.iter()).build(),
-            }
             AstNodeData::FieldLiteral { name, value } => NodeBuilder::new_unnamed().make_field("name",name,NAME_COLOR).convert_field("value",value).build(),
             AstNodeData::Subscription { lhs, rhs } =>  NodeBuilder::new_binary(".",KEYWORD_COLOR,lhs,rhs),
             AstNodeData::Multiplication { lhs, rhs } =>  NodeBuilder::new_binary("*",KEYWORD_COLOR,lhs,rhs),
@@ -995,7 +1051,7 @@ impl DisplayableTree for AstNodeData {
                 builder.make_field("name", name, TYPE_COLOR);
                 builder.make_field("flags",format!("{flags}"),KEYWORD_COLOR);
                 if let Some(args) = generic_arguments {
-                    builder.list_field("generic arguments",args.iter());
+                    builder.list_field("generic arguments",args);
                 }
                 builder.convert_field("alias", alias);
                 builder.build()
@@ -1014,24 +1070,19 @@ impl DisplayableTree for AstNodeData {
                         .build(),
                 Option::None => argument_type.to_node()
             },
-            AstNodeData::Import { path, name } =>
-                NodeBuilder::new("import",KEYWORD_COLOR)
-                    .make_field("path",path,VALUE_COLOR)
-                    .make_field("name",name,TYPE_COLOR)
-                    .build(),
-            AstNodeData::Structure { is_tuple, interfaces, children } => {
+            AstNodeData::Structure { is_tuple, name, generic_arguments, flags , children } => {
                 let mut builder = NodeBuilder::new(if *is_tuple { "tuple" } else { "structure" }, TYPE_COLOR);
-                if interfaces.len() == 0 {
-                    builder.add_children(children.iter());
-                } else {
-                    builder.list_field("interfaces", interfaces.iter());
-                    builder.list_field("children", children.iter());
+                builder.make_field("name", name, TYPE_COLOR);
+                builder.make_field("flags", format!("{flags}"),KEYWORD_COLOR);
+                if let Some(generic_arguments) = generic_arguments {
+                    builder.list_field("generic arguments", generic_arguments);
                 }
+                builder.list_field("children", children);
                 builder.build()
             }
             AstNodeData::FunctionPrototype { flags, name, arguments, return_type } => {
                 let mut builder = NodeBuilder::new("fn prototype", KEYWORD_COLOR);
-                builder.make_field("name",name, METHOD_COLOR).make_field("flags",format!("{flags}"),KEYWORD_COLOR).list_field("arguments",arguments.iter());
+                builder.make_field("name",name, METHOD_COLOR).make_field("flags",format!("{flags}"),KEYWORD_COLOR).list_field("arguments",arguments);
                 if let Some(ret) = return_type {
                     builder.convert_field("return type", ret);
                 }
@@ -1039,7 +1090,7 @@ impl DisplayableTree for AstNodeData {
             }
             AstNodeData::FunctionImport{ flags, name, arguments, return_type , import_name} => {
                 let mut builder = NodeBuilder::new("fn import", KEYWORD_COLOR);
-                builder.make_field("name",name, METHOD_COLOR).make_field("flags",format!("{flags}"),KEYWORD_COLOR).list_field("arguments",arguments.iter());
+                builder.make_field("name",name, METHOD_COLOR).make_field("flags",format!("{flags}"),KEYWORD_COLOR).list_field("arguments",arguments);
                 if let Some(ret) = return_type {
                     builder.convert_field("return type", ret);
                 }
@@ -1052,9 +1103,9 @@ impl DisplayableTree for AstNodeData {
                 let mut builder = NodeBuilder::new("fn", KEYWORD_COLOR);
                 builder.make_field("name",name, METHOD_COLOR).make_field("flags",format!("{flags}"),KEYWORD_COLOR);
                 if let Some(args) = generic_arguments {
-                    builder.list_field("generic arguments",args.iter());
+                    builder.list_field("generic arguments",args);
                 }
-                builder.list_field("arguments",arguments.iter());
+                builder.list_field("arguments",arguments);
                 if let Some(ret) = return_type {
                     builder.convert_field("return type", ret);
                 }
@@ -1065,9 +1116,9 @@ impl DisplayableTree for AstNodeData {
                 let mut builder = NodeBuilder::new("operator", KEYWORD_COLOR);
                 builder.make_field("operator",format!("{operator}"), METHOD_COLOR).make_field("flags",format!("{flags}"),KEYWORD_COLOR);
                 if let Some(args) = generic_arguments {
-                    builder.list_field("generic arguments",args.iter());
+                    builder.list_field("generic arguments",args);
                 }
-                builder.list_field("arguments",arguments.iter());
+                builder.list_field("arguments",arguments);
                 if let Some(ret) = return_type {
                     builder.convert_field("return type", ret);
                 }
@@ -1085,16 +1136,16 @@ impl DisplayableTree for AstNodeData {
             }
             AstNodeData::Closure { arguments, captures, return_type, body } => {
                 let mut builder = NodeBuilder::new("closure", KEYWORD_COLOR);
-                builder.list_field("arguments",arguments.iter()).list_field("captures",captures.iter());
+                builder.list_field("arguments",arguments).list_field("captures",captures);
                 if let Some(ret) = return_type {
                     builder.convert_field("return type", ret);
                 }
                 builder.convert_field("body", body);
                 builder.build()
             }
-            AstNodeData::AnonymousFunction { flags, arguments, return_type, body } => {
+            AstNodeData::AnonymousFunction {  arguments, return_type, body } => {
                 let mut builder = NodeBuilder::new("anonymous function", KEYWORD_COLOR);
-                builder.make_field("flags",format!("{flags}"),KEYWORD_COLOR).list_field("arguments",arguments.iter());
+                builder.list_field("arguments",arguments);
                 if let Some(ret) = return_type {
                     builder.convert_field("return type", ret);
                 }
@@ -1104,7 +1155,7 @@ impl DisplayableTree for AstNodeData {
             AstNodeData::FunctionType { flags, arguments, return_type } =>
                 NodeBuilder::new("fn type",TYPE_COLOR)
                     .make_field("flags",format!("{flags}"),KEYWORD_COLOR)
-                    .list_field("arguments",arguments.iter())
+                    .list_field("arguments",arguments)
                     .convert_field("return type",return_type)
                     .build(),
             AstNodeData::StructureDestructure(fields) => {
@@ -1114,20 +1165,10 @@ impl DisplayableTree for AstNodeData {
                 }
                 builder.build()
             },
-            AstNodeData::TupleDestructure(fields) => NodeBuilder::new("tuple destructure", OTHER_COLOR).add_children(fields.iter()).build(),
-            AstNodeData::ArrayDestructure(fields) => NodeBuilder::new("array destructure", OTHER_COLOR).add_children(fields.iter()).build(),
-            AstNodeData::SliceDestructure(fields) => NodeBuilder::new("slice destructure", OTHER_COLOR).add_children(fields.iter()).build(),
+            AstNodeData::TupleDestructure(fields) => NodeBuilder::new("tuple destructure", OTHER_COLOR).add_children(fields).build(),
+            AstNodeData::ArrayDestructure(fields) => NodeBuilder::new("array destructure", OTHER_COLOR).add_children(fields).build(),
+            AstNodeData::SliceDestructure(fields) => NodeBuilder::new("slice destructure", OTHER_COLOR).add_children(fields).build(),
             AstNodeData::Destructure { structure, value } => NodeBuilder::new("destructure",KEYWORD_COLOR).convert_field("structure", structure).convert_field("value", value).build(),
-            AstNodeData::Interface { interfaces, children, dynamic } => {
-                let mut builder = NodeBuilder::new(if *dynamic { "dynamic interface" } else { "interface" }, TYPE_COLOR);
-                if interfaces.len() == 0 {
-                    builder.add_children(children.iter());
-                } else {
-                    builder.list_field("interfaces", interfaces.iter());
-                    builder.list_field("children", children.iter());
-                }
-                builder.build()
-            }
             AstNodeData::If { condition, unwrap, body, else_statement } => {
                 let mut builder = NodeBuilder::new("if", KEYWORD_COLOR);
                 builder.convert_field("condition", condition);
@@ -1167,7 +1208,7 @@ impl DisplayableTree for AstNodeData {
                 }
                 builder.convert_field("iterable", iterable);
                 if transformations.len() > 0 {
-                    builder.list_field("transformations", transformations.iter());
+                    builder.list_field("transformations", transformations);
                 }
                 builder.convert_field("body", body);
                 if let Some(else_statement) = else_statement {
@@ -1180,7 +1221,7 @@ impl DisplayableTree for AstNodeData {
                 if let Some(store) = store {
                     builder.convert_field("capture", store);
                 }
-                builder.list_field("matches", matches.iter());
+                builder.list_field("matches", matches);
                 builder.convert_field("body", body);
                 builder.build()
             }
@@ -1190,7 +1231,7 @@ impl DisplayableTree for AstNodeData {
                 let mut builder = NodeBuilder::new_unnamed();
                 builder.make_field("name",name,NAME_COLOR);
                 if children.len() > 0 {
-                    builder.list_field(if *tuple { "tuple" } else {"structure"},children.iter());
+                    builder.list_field(if *tuple { "tuple" } else {"structure"},children);
                 }
                 if let Some(value) = value {
                     builder.convert_field("value", value);
@@ -1200,7 +1241,7 @@ impl DisplayableTree for AstNodeData {
             AstNodeData::ArrayType { constant, dimensions, child } =>
                 NodeBuilder::new("array type", TYPE_COLOR)
                     .make_field("constant", *constant, VALUE_COLOR)
-                    .list_field("dimensions", dimensions.iter())
+                    .list_field("dimensions", dimensions)
                     .convert_field("subtype", child)
                     .build(),
             AstNodeData::TypeMemberReference { referee, member } =>
@@ -1211,15 +1252,15 @@ impl DisplayableTree for AstNodeData {
             AstNodeData::GenericInstanceReference { referee, generic_args }  =>
                 NodeBuilder::new("::<>",KEYWORD_COLOR)
                     .convert_field("value",referee)
-                    .list_field("arguments",generic_args.iter())
+                    .list_field("arguments",generic_args)
                     .build(),
             AstNodeData::Constructor { flags, cons_type, generic_arguments, arguments, body } => {
                 let mut builder = NodeBuilder::new("constructor", KEYWORD_COLOR);
                 builder.make_field("type",format!("{cons_type}"), METHOD_COLOR).make_field("flags",format!("{flags}"),KEYWORD_COLOR);
                 if let Some(args) = generic_arguments {
-                    builder.list_field("generic arguments",args.iter());
+                    builder.list_field("generic arguments",args);
                 }
-                builder.list_field("arguments",arguments.iter());
+                builder.list_field("arguments",arguments);
                 builder.convert_field("body", body);
                 builder.build()
             }
@@ -1227,9 +1268,9 @@ impl DisplayableTree for AstNodeData {
                 let mut builder = NodeBuilder::new("constructor delete", KEYWORD_COLOR);
                 builder.make_field("type",format!("{cons_type}"), METHOD_COLOR).make_field("flags",format!("{flags}"),KEYWORD_COLOR);
                 if let Some(args) = generic_arguments {
-                    builder.list_field("generic arguments",args.iter());
+                    builder.list_field("generic arguments",args);
                 }
-                builder.list_field("arguments",arguments.iter());
+                builder.list_field("arguments",arguments);
                 builder.build()
             }
             AstNodeData::Destructor { flags, body }  => {
@@ -1238,6 +1279,51 @@ impl DisplayableTree for AstNodeData {
                 builder.convert_field("body", body);
                 builder.build()
             }
+            Enum { flags, name, containing_type, children, generic_arguments } => {
+                let mut builder = NodeBuilder::new("enum",KEYWORD_COLOR);
+                builder.make_field("name",name,TYPE_COLOR);
+                builder.make_field("flags", format!("{flags}"), KEYWORD_COLOR);
+                if let Some(containing_type) = containing_type {
+                    builder.convert_field("containing type",containing_type);
+                }
+                if let Some(generic_arguments) = generic_arguments {
+                    builder.list_field("generic arguments", generic_arguments);
+                }
+                builder.list_field("children",children).build()
+            }
+            ImportStar => {
+                NodeBuilder::new("*",TYPE_COLOR).build()
+            }
+            ImportTree { name, children } => {
+                NodeBuilder::new(name,TYPE_COLOR).add_children(children).build()
+            }
+            ModuleReference { flags, name } => NodeBuilder::new("module reference",KEYWORD_COLOR).make_field("flags",format!("{flags}"),KEYWORD_COLOR).make_field("name",name,TYPE_COLOR).build(),
+            ModuleDeclaration { flags, name, children } => NodeBuilder::new("module declaration",KEYWORD_COLOR).make_field("flags",format!("{flags}"),KEYWORD_COLOR).make_field("name",name,TYPE_COLOR).list_field("children",children).build(),
+            Module(children) => NodeBuilder::new("module",KEYWORD_COLOR).add_children(children).build(),
+            StaticVariableDeclaration { flags, name, variable_type, value } => {
+                let mut builder = NodeBuilder::new("static variable",KEYWORD_COLOR);
+                builder.make_field("flags",format!("{flags}"),KEYWORD_COLOR).make_field("name",name,NAME_COLOR);
+                if let Some(variable_type) = variable_type {
+                    builder.convert_field("type", variable_type);
+                }
+                builder.convert_field("value",value).build()
+            }
+            FunctionTraitType { arguments, return_type } => NodeBuilder::new("Fn",TYPE_COLOR).list_field("arguments",arguments).convert_field("return type",return_type).build(),
+            FunctionInterfaceType { arguments, return_type } => NodeBuilder::new("IFn",TYPE_COLOR).list_field("arguments",arguments).convert_field("return type",return_type).build(),
+            MutableFunctionTraitType { arguments, return_type } => NodeBuilder::new("FnMut",TYPE_COLOR).list_field("arguments",arguments).convert_field("return type",return_type).build(),
+            MutableFunctionInterfaceType { arguments, return_type } => NodeBuilder::new("IFnMut",TYPE_COLOR).list_field("arguments",arguments).convert_field("return type",return_type).build(),
+            Interface { flags, name, generic_arguments, children } => {
+                let mut builder = NodeBuilder::new("interface", KEYWORD_COLOR);
+                builder.make_field("flags", format!("{flags}"), KEYWORD_COLOR).make_field("name", name, TYPE_COLOR);
+                if let Some(generic_arguments) = generic_arguments {
+                    builder.list_field("generic arguments", generic_arguments);
+                }
+                builder.list_field("children", children).build()
+            }
+            Import(tree) => NodeBuilder::new("import",KEYWORD_COLOR).convert_inline(tree).build(),
+            TypeName(name) => NodeBuilder::new(name,TYPE_COLOR).build(),
+            Tuple(children) => NodeBuilder::new("tuple",TYPE_COLOR).add_children(children).build(),
+            InferredArgument(name) => NodeBuilder::new(name, NAME_COLOR).build()
         }
     }
 }
@@ -1281,6 +1367,18 @@ impl AstNodeData {
                 if let $name(v) = &data { $validator.validate(v) } else { false }
             };
         }
+        macro_rules! check_functional {
+            ($name: ident ($args:expr) -> $rt:expr) => {
+                if let $name{
+                    arguments: a,
+                    return_type: b
+                } = &data {
+                    validate_list(a,$args) && $rt.validate(b)
+                } else {
+                    false
+                }
+            }
+        }
         let result = match self {
             Bool => check!(Bool),
             SignedSize => check!(SignedSize),
@@ -1302,7 +1400,7 @@ impl AstNodeData {
             None => check!(None),
             Underscore => check!(Underscore),
             Continue => check!(Continue),
-            EmptyBreak => check!(EmptyBreak),
+            Break => check!(Break),
             EmptyReturn => check!(EmptyReturn),
             SelfValue => check!(SelfValue),
             ConstSelfValue => check!(ConstSelfValue),
@@ -1325,7 +1423,6 @@ impl AstNodeData {
                 false
             },
             NameReference(name) => check!(NameReference, name),
-            UnnamedBlock(block) => check_list!(UnnamedBlock, block),
             TupleLiteral(args) => check_list!(TupleLiteral, args),
             ArrayLiteral(args) => check_list!(ArrayLiteral, args),
             EnumLiteral(name) => check!(EnumLiteral, name),
@@ -1335,7 +1432,6 @@ impl AstNodeData {
             ConstantReferenceCapture(name) => check!(ConstantReferenceCapture, name),
             ObjectLiteral(args) => check_list!(ObjectLiteral,args),
             Block(list) => check_list!(Block, list),
-            Break(arg) => check_unary!(Break, arg),
             Return(arg) => check_unary!(Return, arg),
             Yield(arg) => check_unary!(Yield, arg),
             Not(arg) => check_unary!(Not, arg),
@@ -1350,6 +1446,7 @@ impl AstNodeData {
             Comptime(arg) => check_unary!(Comptime, arg),
             ImplicitResult(arg) => check_unary!(ImplicitResult,arg),
             Typeof(arg) => check_unary!(Typeof,arg),
+            NamedBreak(name) => check!(NamedBreak, name),
             ImplicitArray {
                 constant, subtype
             } => {
@@ -1397,18 +1494,18 @@ impl AstNodeData {
                     false
                 }
             },
-            NamedBlock { name, body } => {
-                if let NamedBlock {
+            NamedExpression { name, expr } => {
+                if let NamedExpression {
                     name: n2,
-                    body: b2,
+                    expr: e2,
                 } = &data {
-                    name == n2 && validate_list(b2, body)
+                    name == n2 && expr.validate(e2)
                 } else {
                     false
                 }
             },
-            NamedBreak { name, value } => {
-                if let NamedBreak {
+            NamedYield { name, value } => {
+                if let NamedYield {
                     name: n2,
                     value: v2
                 } = &data {
@@ -1473,16 +1570,6 @@ impl AstNodeData {
             DestructuringMatchStructure(value) => check_dict!(DestructuringMatchStructure,value),
             DestructuringMatchTuple(value) => check_list!(DestructuringMatchTuple,value),
             DestructuringMatchArray(value) => check_list!(DestructuringMatchArray,value),
-            Enum { containing_type, children } => {
-                if let Enum {
-                    containing_type: ct2,
-                    children: c2
-                } = &data {
-                    validate_optional(ct2,containing_type) && validate_list(c2, children)
-                } else {
-                    false
-                }
-            }
             FieldLiteral { name, value } => {
                 if let FieldLiteral {
                     name: n2,
@@ -1561,27 +1648,6 @@ impl AstNodeData {
                     name: n2, argument_type: a2
                 } = &data {
                     name == n2 && argument_type.validate(a2)
-                } else {
-                    false
-                }
-            }
-            Import { path, name } => {
-                if let Import {
-                    name: n2,
-                    path: p2
-                } = &data {
-                    name == n2 && path == p2
-                } else {
-                    false
-                }
-            }
-            Structure { is_tuple, interfaces, children } => {
-                if let Structure {
-                    is_tuple: t2,
-                    interfaces: i2,
-                    children: c2
-                } = &data {
-                    t2 == is_tuple && validate_list(i2,interfaces) && validate_list(c2,children)
                 } else {
                     false
                 }
@@ -1728,14 +1794,13 @@ impl AstNodeData {
                     false
                 }
             }
-            AnonymousFunction { flags, arguments, return_type, body } => {
+            AnonymousFunction { arguments, return_type, body } => {
                 if let AnonymousFunction {
-                    flags: f2,
                     arguments: a2,
                     return_type: r2,
                     body: b2
                 } = &data {
-                    f2 == flags && validate_list(a2,arguments) && validate_optional(r2, return_type) && body.validate(b2)
+                    validate_list(a2,arguments) && validate_optional(r2, return_type) && body.validate(b2)
                 } else {
                     false
                 }
@@ -1756,15 +1821,6 @@ impl AstNodeData {
             ArrayDestructure(list) => check_list!(ArrayDestructure, list),
             SliceDestructure(list) => check_list!(SliceDestructure, list),
             Destructure { structure, value } => check!(Destructure,structure,structure,value,value),
-            Interface { interfaces, children, dynamic } => {
-                if let Interface {
-                    interfaces: i2, children: c2, dynamic: d2
-                } = &data {
-                    d2 == dynamic && validate_list(i2,interfaces) && validate_list(c2, children)
-                } else {
-                    false
-                }
-            }
             If { condition, unwrap, body, else_statement } => {
                 if let If {
                     condition: c2, unwrap: u2, body: b2, else_statement: e2
@@ -1845,6 +1901,95 @@ impl AstNodeData {
                 }
             }
             ErrorNode { .. } => true,
+            Import(tree) => check_unary!(Import,tree),
+            Enum { flags, name, generic_arguments, containing_type, children } => {
+                if let Enum{flags: f2, name: n2, generic_arguments: g2, containing_type: ct2, children: c2} = &data {
+                    flags == f2 && name == n2 && match generic_arguments {
+                        Option::None => g2.is_none(),
+                        Some(args) => match g2 {
+                            Option::None => false,
+                            Some(args2) => validate_list(args,args2)
+                        }
+                    } && match containing_type {
+                        OptionalNode::None => ct2.is_none(),
+                        Some(ct) => match ct2 {
+                            OptionalNode::None => false,
+                            Some(ct2) => ct.validate(ct2)
+                        }
+                    } && validate_list(children,c2)
+                } else {
+                    false
+                }
+            }
+            ImportStar => check!(ImportStar),
+            ImportTree { name, children } => {
+                if let ImportTree { name: n2, children: c2} = &data {
+                    name == n2 && validate_list(children, c2)
+                } else {
+                    false
+                }
+            }
+            Structure { flags, name, is_tuple, generic_arguments, children } => {
+                if let Structure{flags: f2, name: n2,  is_tuple: t2, generic_arguments: g2, children: c2} = &data {
+                    flags == f2 && name == n2 && is_tuple == t2 && match generic_arguments {
+                        Option::None => g2.is_none(),
+                        Some(args) => match g2 {
+                            Option::None => false,
+                            Some(args2) => validate_list(args,args2)
+                        }
+                    } && validate_list(children, c2)
+                } else {
+                    false
+                }
+            }
+            ModuleReference { flags, name } => {
+                if let ModuleReference { flags: f2, name: n2} = &data {
+                    flags == f2 && name == n2
+                } else {
+                    false
+                }
+            }
+            ModuleDeclaration { flags, name, children } => {
+                if let ModuleDeclaration { flags: f2, name: n2, children: c2} = &data {
+                    flags == f2 && name == n2 && validate_list(children,c2)
+                } else {
+                    false
+                }
+            }
+            Module(children) => check_list!(Module,children),
+            StaticVariableDeclaration { flags, name, variable_type, value } => {
+                if let StaticVariableDeclaration {flags: f2, name: n2, variable_type: t2, value: v2} = &data {
+                    flags == f2 && name == n2 && match variable_type {
+                        OptionalNode::None => t2.is_none(),
+                        Some(t1) => match t2 {
+                            OptionalNode::None => false,
+                            Some(t2) => t1.validate(t2)
+                        }
+                    }
+                } else {
+                    false
+                }
+            }
+            FunctionTraitType { arguments, return_type } => check_functional!(FunctionTraitType(arguments) -> return_type),
+            FunctionInterfaceType { arguments, return_type } => check_functional!(FunctionInterfaceType(arguments) -> return_type),
+            MutableFunctionTraitType { arguments, return_type } => check_functional!(MutableFunctionTraitType(arguments) -> return_type),
+            MutableFunctionInterfaceType { arguments, return_type } => check_functional!(MutableFunctionInterfaceType(arguments) -> return_type),
+            Interface { flags, name, generic_arguments, children } => {
+                if let Interface {flags: f2, name: n2, generic_arguments: g2, children: c2} = &data {
+                    flags == f2 && name == n2 && match generic_arguments {
+                        Option::None => g2.is_none(),
+                        Some(args) => match g2 {
+                            Option::None => false,
+                            Some(args2) => validate_list(args,args2)
+                        }
+                    } && validate_list(children, c2)
+                } else {
+                    false
+                }
+            }
+            TypeName(name) => check!(TypeName, name),
+            Tuple(children) => check_list!(Tuple, children),
+            InferredArgument(name) => check!(InferredArgument, name)
         };
         if !result {
             println!("failed to validate!\nexpected:\n{self}\n\ngot:\n{node}\n\n")
@@ -1859,11 +2004,41 @@ impl AstNode {
     }
 }
 
+macro_rules! validator_field {
+    ($field:ident,String) => {
+        $field.to_string()
+    };
+    ($field:ident,Option<String>) => {
+        match $field {
+            Some(s) => Some(s.to_string()),
+            Option::None => Option::None
+        }
+    };
+    ($field:ident,$t:ty) => {
+        $field
+    };
+    (String) => {
+        impl ToString
+    };
+    (Option<String>) => {
+        Option<impl ToString>
+    };
+    ($t:ty) => {
+        $t
+    };
+}
 macro_rules! validator {
     ($name:ident) => {
         paste! {
             pub fn [<v_ $name:snake >]  () -> NodePtr {
                 AstNode::new(FileSpan::default(),AstNodeData::$name)
+            }
+        }
+    };
+    ($name:ident(String)) => {
+        paste! {
+            pub fn [<v_ $name:snake >](v: impl ToString) -> NodePtr {
+                AstNode::new(FileSpan::default(),AstNodeData::$name(v.to_string()))
             }
         }
     };
@@ -1874,18 +2049,33 @@ macro_rules! validator {
             }
         }
     };
+
+    ($name:ident, $args:tt, $body:expr) => {
+        pub fn $name $args -> NodePtr {
+            $body
+        }
+    };
+
     ($name:ident{$($field:ident:$t:ty),*$(,)?}) => {
+        // paste! {pub fn [<v_ $name:snake >]}
         paste! {
-            pub fn [<v_ $name:snake >] ($($field: $t),*) -> NodePtr {
+            validator!{
+                [<v_ $name:snake >],
+                (
+                    $(
+                       $field: validator_field!($t)
+                    ),*
+                ),
                 AstNode::new(FileSpan::default(),AstNodeData::$name{
                     $(
-                        $field
+                        $field: validator_field!($field,$t)
                     ),*
                 })
             }
         }
     };
 }
+
 macro_rules! validator_set {
     ($($name: ident),*$(,)?) => {
         $(
@@ -1921,7 +2111,7 @@ validator_set!(
     None,
     Underscore,
     Continue,
-    EmptyBreak,
+    Break,
     EmptyReturn,
     SelfValue,
     ConstSelfValue,
@@ -1932,7 +2122,8 @@ validator_set!(
     MatchAll,
     NonExhaustive,
     UnknownSize,
-    InferredSize
+    InferredSize,
+    ImportStar
 );
 validator_set!(
     SignedIntegerType(u64),
@@ -1942,7 +2133,6 @@ validator_set!(
     ImaginaryLiteral(f64),
     IntegerLiteral(BigInt),
     NameReference(String),
-    UnnamedBlock(NodeList),
     TupleLiteral(NodeList),
     ArrayLiteral(NodeList),
     EnumLiteral(String),
@@ -1952,7 +2142,6 @@ validator_set!(
     ConstantReferenceCapture(String),
     ObjectLiteral(NodeList),
     Block(NodeList),
-    Break(NodePtr),
     Return(NodePtr),
     Yield(NodePtr),
     Not(NodePtr),
@@ -1975,7 +2164,12 @@ validator_set!(
     TupleDestructure(NodeList),
     ArrayDestructure(NodeList),
     SliceDestructure(NodeList),
-    Typeof(NodePtr)
+    Typeof(NodePtr),
+    Module(NodeList),
+    TypeName(String),
+    Tuple(NodeList),
+    NamedBreak(String),
+    InferredArgument(String),
 );
 
 
@@ -2000,11 +2194,11 @@ validator!(ArrayCall {
         functional: NodePtr,
         args: NodeList
     });
-validator!(NamedBlock {
+validator!(NamedExpression {
         name: String,
-        body: NodeList
+        expr: NodePtr
     });
-validator!(NamedBreak {
+validator!(NamedYield {
         name: String,
         value: NodePtr
     });
@@ -2031,10 +2225,6 @@ validator!(MatchEnumStructure  {
 });
 validator!(MatchEnumTuple  {
     enum_identifier: String,
-    children: NodeList,
-});
-validator!(Enum {
-    containing_type: OptionalNode,
     children: NodeList,
 });
 validator!(FieldLiteral {
@@ -2192,21 +2382,13 @@ validator!(Argument {
     name: Option<String>,
     argument_type: NodePtr,
 });
-validator!(Import {
-    path: String,
-    name: String,
-});
-validator!(Structure {
-    is_tuple: bool,
-    interfaces: NodeList,
-    children: NodeList,
-});
 validator!(FunctionPrototype {
     flags: DeclarationFlags,
     name: String,
     arguments: NodeList,
     return_type: OptionalNode,
 });
+
 validator!(FunctionImport {
     flags: DeclarationFlags,
     name: String,
@@ -2246,7 +2428,6 @@ validator!(Closure {
     body: NodePtr,
 });
 validator!(AnonymousFunction {
-    flags: DeclarationFlags,
     arguments: NodeList,
     return_type: OptionalNode,
     body: NodePtr,
@@ -2261,11 +2442,6 @@ validator!(FunctionType {
 validator!(Destructure {
     structure: NodePtr,
     value: NodePtr,
-});
-validator!(Interface {
-    interfaces: NodeList,
-    children: NodeList,
-    dynamic: bool,
 });
 validator!(If {
     condition: NodePtr,
@@ -2316,21 +2492,81 @@ validator!(GenericInstanceReference {
     generic_args: NodeList
 });
 
+validator!(Enum {
+        flags: DeclarationFlags,
+        name: String,
+        generic_arguments: Option<NodeList>,
+        containing_type: OptionalNode,
+        children: NodeList,
+});
+
+validator!(StaticVariableDeclaration {
+    flags: DeclarationFlags,
+    name: String,
+    variable_type: OptionalNode,
+    value: NodePtr
+});
+
+validator!(Structure {
+        flags: DeclarationFlags,
+        name: String,
+        is_tuple: bool,
+        generic_arguments: Option<NodeList>,
+        children: NodeList,
+    });
+validator!(Interface {
+        flags: DeclarationFlags,
+        name: String,
+        generic_arguments: Option<NodeList>,
+        children: NodeList
+    });
+
+validator!(FunctionTraitType {
+    arguments: NodeList,
+    return_type: NodePtr
+});
+
+validator!(FunctionInterfaceType {
+    arguments: NodeList,
+    return_type: NodePtr
+});
+
+validator!(MutableFunctionTraitType {
+    arguments: NodeList,
+    return_type: NodePtr
+});
+
+validator!(MutableFunctionInterfaceType {
+    arguments: NodeList,
+    return_type: NodePtr
+});
+
+validator!(ModuleReference {
+flags: DeclarationFlags,
+name: String,
+});
+
+// This declares a module inline to a file
+validator!(ModuleDeclaration {
+flags: DeclarationFlags,
+name: String,
+children: NodeList
+});
+
+validator!(ImportTree {
+name: String,
+children: NodeList,
+});
+
 pub fn v_program(children: NodeList) -> NodePtr {
-    v_structure(false, vec![], children)
+    v_module(children)
 }
 
 pub fn v_single(child: NodePtr) -> NodePtr {
     v_program(vec![child])
 }
 
-pub fn v_name<T: ToString>(name: T) -> NodePtr {
-    v_name_reference(name.to_string())
-}
-
-pub fn v_string<T: ToString>(name: T) -> NodePtr {
-    v_string_literal(name.to_string())
-}
+pub const NO_STRING: Option<&str> = Option::None;
 
 #[macro_export]
 macro_rules! v_map {

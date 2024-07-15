@@ -1,0 +1,1 @@
+// This file is called "trait" parser, but it's meant for parsing traits and interfaces

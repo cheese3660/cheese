@@ -1,5 +1,5 @@
 use crate::args;
-use crate::ast::{AstNode, DeclarationFlags, NodeList, NodePtr, OptionalNode};
+use crate::ast::{AstNode, DeclarationFlags, NodeList, NodePtr, OptionalNode, v_tuple};
 use crate::tests::{Error, validate};
 use crate::ast::{v_addition, v_block, v_function, v_function_import, v_implicit_result, v_name, v_none, v_signed_integer_type, v_single, v_string, v_structure, v_tuple_literal, v_type, v_void, v_argument};
 
@@ -107,7 +107,7 @@ fn no_generic_multi_argument_no_modifiers() -> Error {
 #[test]
 fn generic_multi_argument_no_modifiers() -> Error {
     validate(
-        "fn a<U: type, V: type>(b: U, c: V) -> struct(U,V) => .(b,c);",
+        "fn a<U: type, V: type>(b: U, c: V) -> (U,V) => .(b,c);",
         v_single_function(
             DeclarationFlags::empty(),
             "a",
@@ -119,9 +119,7 @@ fn generic_multi_argument_no_modifiers() -> Error {
                 "b" => v_name("U"),
                 "c" => v_name("V")
             ],
-            Some(v_structure(
-                true,
-                vec![],
+            Some(v_tuple(
                 vec![
                     v_name("U"),
                     v_name("V")
@@ -165,7 +163,7 @@ fn multi_argument_no_modifiers_block() -> Error {
 #[test]
 fn no_argument_inline_modifier() -> Error {
     validate(
-        "fn a() inline => none;",
+        "inline fn a() => none;",
         v_single_function(
             DeclarationFlags::inline,
             "a",
@@ -180,7 +178,7 @@ fn no_argument_inline_modifier() -> Error {
 #[test]
 fn no_argument_extern_modifier() -> Error {
     validate(
-        "fn a() extern -> void => none;",
+        "extern fn a() -> void => none;",
         v_single_function(
             DeclarationFlags::external,
             "a",
@@ -195,7 +193,7 @@ fn no_argument_extern_modifier() -> Error {
 #[test]
 fn no_argument_export_modifier() -> Error {
     validate(
-        "fn a() export => none;",
+        "export fn a() => none;",
         v_single_function(
             DeclarationFlags::export,
             "a",
@@ -210,7 +208,7 @@ fn no_argument_export_modifier() -> Error {
 #[test]
 fn no_argument_comptime_modifier() -> Error {
     validate(
-        "fn a() comptime => none;",
+        "comptime fn a() => none;",
         v_single_function(
             DeclarationFlags::comptime,
             "a",
@@ -225,7 +223,7 @@ fn no_argument_comptime_modifier() -> Error {
 #[test]
 fn no_argument_public_modifier() -> Error {
     validate(
-        "fn a() public => none;",
+        "public fn a() => none;",
         v_single_function(
             DeclarationFlags::public,
             "a",
@@ -240,7 +238,7 @@ fn no_argument_public_modifier() -> Error {
 #[test]
 fn no_argument_private_modifier() -> Error {
     validate(
-        "fn a() private => none;",
+        "private fn a() => none;",
         v_single_function(
             DeclarationFlags::private,
             "a",
@@ -255,7 +253,7 @@ fn no_argument_private_modifier() -> Error {
 #[test]
 fn no_argument_entry_modifier() -> Error {
     validate(
-        "fn a() entry => none;",
+        "entry fn a() => none;",
         v_single_function(
             DeclarationFlags::entry,
             "a",
@@ -271,7 +269,7 @@ fn no_argument_entry_modifier() -> Error {
 #[test]
 fn no_argument_multiple_modifiers() -> Error {
     validate(
-        "fn a() export entry => none;",
+        "export entry fn a()=> none;",
         v_single_function(
             DeclarationFlags::export | DeclarationFlags::entry,
             "a",
@@ -286,7 +284,7 @@ fn no_argument_multiple_modifiers() -> Error {
 #[test]
 fn importing_no_library() -> Error {
     validate(
-        "fn a() -> void import;",
+        "import fn a() -> void;",
         v_single(
             v_function_import(
                 DeclarationFlags::empty(),
@@ -303,7 +301,7 @@ fn importing_no_library() -> Error {
 #[test]
 fn importing_library() -> Error {
     validate(
-        "fn a() import(\"test.dll\");",
+        "import(\"test.dll\") fn a();",
         v_single(
             v_function_import(
                 DeclarationFlags::empty(),

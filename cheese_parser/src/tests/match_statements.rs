@@ -1,12 +1,12 @@
 use crate::{args, v_map};
 use crate::ast::{DeclarationFlags, NodeList, NodePtr};
-use crate::tests::{Error, v_empty_def, v_i, validate};
+use crate::tests::{Error, v_empty_static, v_i, validate};
 use std::collections::HashMap;
 use crate::ast::{v_closure, v_const_reference_implicit_capture, v_none, v_single, v_variable_declaration, v_argument, v_bool, v_reference_capture, v_reference, v_constant_reference_capture, v_copy_capture, v_reference_implicit_capture, v_copy_implicit_capture, v_void, v_function, v_signed_integer_type, v_if, v_lesser_than, v_name, v_unary_minus, v_match, v_match_arm, v_match_value, v_match_range, v_match_constraint, v_match_all, v_destructuring_match_array, v_destructuring_match_structure, v_destructuring_match_arm, v_destructuring_match_tuple, v_enum_literal, v_match_enum_tuple, v_match_enum_structure};
 
 
 fn v_match_y(arms: NodeList) -> NodePtr {
-    v_single(v_variable_declaration(v_empty_def(),v_match(v_name("y"),arms)))
+    v_single(v_empty_static(v_match(v_name("y"), arms)))
 }
 
 #[test]

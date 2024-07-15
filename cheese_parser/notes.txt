@@ -1,0 +1,58 @@
+Stuff that needs to change
+
+Anonymous structs = No more
+Structs can no longer have methods defined in them, instead, impl statements are used
+i.e. the following rust-like constructs
+impl Struct {
+
+}
+
+impl<T: ...> Struct {
+
+}
+
+impl Trait/Interface for Struct {
+
+}
+
+impl<T: ...> Trait/Interface<T> for Struct<T> {
+
+}
+
+Type aliasing can still have generics but that's not the source of the generics
+
+type Something<T: type> is Struct<T>;
+
+Structures, enums, interfaces, traits, and concepts will all have names
+
+i.e. no more
+type x is struct {
+
+}
+
+it is now
+
+struct Name {
+    ...
+}
+
+or
+
+struct Name<T: ..., I: ...> {
+
+}
+
+for example for a c++ like array type
+public struct Array<T: type, L: usize> {
+    private _items: [L]T;
+}
+
+
+impl<T: type, L: usize> Array<T,L> {
+
+}
+
+
+
+Anonymous tuple types are allowed though
+type T is (i32,i32, i32)

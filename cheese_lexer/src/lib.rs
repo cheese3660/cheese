@@ -8,7 +8,7 @@ use cheese_diagnostics;
 use cheese_diagnostics::{advice, error, ErrorCode, exiting_error, ReportLabel};
 use cheese_diagnostics::ErrorCode::{ExpectedSelf, UnterminatedBlockComment};
 use cheese_diagnostics::locating::{Coordinate, File, FileSpan};
-use crate::TokenType::{AddAssign, Ampersand, Array, Arrow, Assign, Block, Cast, CharacterLiteral, Colon, Comma, ConstantArray, ConstantPointer, ConstantSlice, ConstSelfType, Dash, DivideAssign, Dot, DoubleColon, DoubleDot, DynamicCast, EndOfFile, EqualTo, Exclamation, GreaterThan, GreaterThanEqual, Hash, LeftBrace, LeftBracket, LeftParentheses, LeftShift, LeftShiftAssign, LessThan, LessThanEqual, ModuloAssign, MultiplyAssign, NotEqualTo, Object, Percent, Pipe, Plus, Question, Redefine, ReversedArrow, RightBrace, RightBracket, RightParentheses, RightShift, RightShiftAssign, Semicolon, Slash, Star, StringLiteral, SubtractAssign, ThickArrow, TripleDot, Tuple};
+use crate::TokenType::{AddAssign, Ampersand, Array, Arrow, Assign, Cast, CharacterLiteral, Colon, Comma, ConstantArray, ConstantPointer, ConstantSlice, ConstSelfType, Dash, DivideAssign, Dot, DoubleColon, DoubleDot, DynamicCast, EndOfFile, EqualTo, Exclamation, GreaterThan, GreaterThanEqual, Hash, LeftBrace, LeftBracket, LeftParentheses, LeftShift, LeftShiftAssign, LessThan, LessThanEqual, ModuloAssign, MultiplyAssign, NotEqualTo, Object, Percent, Pipe, Plus, Question, Redefine, ReversedArrow, RightBrace, RightBracket, RightParentheses, RightShift, RightShiftAssign, Semicolon, Slash, Star, StringLiteral, SubtractAssign, ThickArrow, TripleDot, Tuple};
 
 // Important types
 
@@ -67,8 +67,6 @@ pub enum TokenType {
     Tuple, // .(
     Object, // .{
     Array, // .[
-    Block, // :( name )
-    BlockYield, // yield( name ) ...
     Exponentiate, // ^
     ExponentiateAssign, // ^=
     Redefine, // :=
@@ -171,6 +169,12 @@ pub enum TokenType {
     Delete, // delete
     Explicit, // explicit
     Implicit, // implicit
+    FnTrait, // Fn
+    FnInterface, // IFn
+    FnMutTrait, // FnMut
+    FnMutInterface, // IFnMut
+    Module, // module
+    Static, // static (used for static variables)
     // Special
     EndOfFile,
     // Lexer error token
@@ -240,7 +244,6 @@ lazy_static! {
         m.insert("export", TokenType::Export);
         m.insert("impl", TokenType::Impl);
         m.insert("interface", TokenType::Interface);
-        m.insert("dynamic", TokenType::Dynamic);
         m.insert("constrain", TokenType::Constrain);
         m.insert("loop", TokenType::Loop);
         m.insert("self", TokenType::SelfType);
@@ -248,12 +251,18 @@ lazy_static! {
         m.insert("operator", TokenType::Operator);
         m.insert("return", TokenType::Return);
         m.insert("yield", TokenType::Yield);
-        m.insert("yield(", TokenType::BlockYield);
+        // m.insert("yield(", TokenType::BlockYield);
         m.insert("template", TokenType::Template);
         m.insert("concept", TokenType::Concept);
         m.insert("typeof", TokenType::Typeof);
         m.insert("implicit", TokenType::Implicit);
         m.insert("explicit", TokenType::Explicit);
+        m.insert("Fn",TokenType::FnTrait);
+        m.insert("FnMut",TokenType::FnMutTrait);
+        m.insert("IFn",TokenType::FnInterface);
+        m.insert("IFnMut",TokenType::FnMutInterface);
+        m.insert("module",TokenType::Module);
+        m.insert("static",TokenType::Static);
         return m;
     };
 }
@@ -883,10 +892,6 @@ impl Lexer {
                         Some('=') => {
                             self.advance();
                             tokens.push(self.make_token(Redefine, start_location));
-                        },
-                        Some('(') => {
-                            self.advance();
-                            tokens.push(self.make_token(Block, start_location));
                         },
                         Some(':') => {
                             self.advance();
