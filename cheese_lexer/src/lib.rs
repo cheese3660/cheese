@@ -95,7 +95,6 @@ pub enum TokenType {
     Struct, // struct
     Extern, // extern
     Let, // let
-    Def, // def
     Fn, // fn
     Float32, // f32
     Float64, // f64
@@ -175,6 +174,7 @@ pub enum TokenType {
     FnMutInterface, // IFnMut
     Module, // module
     Static, // static (used for static variables)
+    Virtual, // virtual (used in interfaces to denote dynamic dispatch)
     // Special
     EndOfFile,
     // Lexer error token
@@ -197,7 +197,6 @@ lazy_static! {
         m.insert("struct", TokenType::Struct);
         m.insert("extern", TokenType::Extern);
         m.insert("let", TokenType::Let);
-        m.insert("def", TokenType::Def);
         m.insert("fn", TokenType::Fn);
         m.insert("f32", TokenType::Float32);
         m.insert("f64", TokenType::Float64);
@@ -263,6 +262,7 @@ lazy_static! {
         m.insert("IFnMut",TokenType::FnMutInterface);
         m.insert("module",TokenType::Module);
         m.insert("static",TokenType::Static);
+        m.insert("virtual",TokenType::Virtual);
         return m;
     };
 }

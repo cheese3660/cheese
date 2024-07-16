@@ -4,16 +4,18 @@ mod type_parser;
 mod function_parser;
 mod trait_parser;
 mod expression_parser;
+mod let_parser;
+mod match_parser;
 
 use std::fmt::Display;
 use ariadne::{Color, Fmt};
 use cheese_diagnostics::{error, ErrorCode, exiting_error, ReportLabel};
-use cheese_diagnostics::ErrorCode::{ExpectedCaptureName, ExpectedCaptureSpecifier, ExpectedClose, ExpectedCommaOrClose, ExpectedOpenParentheses, GeneralCompilerError};
+use cheese_diagnostics::ErrorCode::{ExpectedCaptureName, ExpectedCaptureSpecifier, ExpectedClose, ExpectedCommaOrClose, ExpectedName, ExpectedOpenParentheses, GeneralCompilerError};
 use cheese_diagnostics::locating::{Coordinate, File, FileSpan};
 use cheese_lexer::{Token, TokenType};
-use cheese_lexer::TokenType::{Comma, Identifier, LeftParentheses};
+use cheese_lexer::TokenType::{Assign, Colon, Comma, GreaterThan, Identifier, LeftParentheses};
 use crate::ast::{AstNode, DeclarationFlags, NodeList, NodePtr, OptionalNode};
-use crate::ast::AstNodeData::{ConstantReferenceCapture, ConstReferenceImplicitCapture, CopyCapture, CopyImplicitCapture, ErrorNode, False, ReferenceCapture, ReferenceImplicitCapture};
+use crate::ast::AstNodeData::{ConstantReferenceCapture, ConstReferenceImplicitCapture, CopyCapture, CopyImplicitCapture, ErrorNode, False, ReferenceCapture, ReferenceImplicitCapture, Type};
 const NO_NOTE: Option<&str> = None;
 
 // This is just a module for parsers, that will each have their own file to separate stuff out
@@ -84,6 +86,14 @@ impl Parser {
 
     pub fn peek_ref(&self) -> &Token {
         &self.tokens[self.location]
+    }
+
+    pub fn peek2(&self) -> Option<TokenType> {
+        if self.location+1 < self.tokens.len() {
+            Some(self.tokens[self.location+1].token_type.clone())
+        } else {
+            None
+        }
     }
 
     pub fn previous(&mut self) {
@@ -254,5 +264,29 @@ impl Parser {
                 )
             ])
         }
+    }
+
+    fn parse_generic_parameter_list(&mut self, allow_default: bool) -> (NodeList, FileSpan) {
+        // Assume that we are already passed the first diamond
+        let (a,b,_) = self.parse_comma_separated_list(|s| s.parse_generic_parameter(allow_default), |t| t == GreaterThan, ">");
+        (a,b)
+    }
+
+    fn parse_generic_parameter(&mut self, allow_default: bool) -> NodePtr {
+        let start_loc = self.peek_ref().span.clone();
+        let name = self.peek_ref().value.clone();
+        try_err!(self.eat(Identifier, |_| ExpectedInformation::new("a name for a generic parameter", ExpectedName, NO_NOTE, vec![])));
+        let ty = if self.peek_ref().token_type == Colon {
+            self.eat_any();
+            Some(self.parse_type())
+        } else {
+            None
+        };
+        let default = if self.peek_ref().token_type == Assign {
+            self.eat_any();
+            Some(self.parse_generic_type_argument())
+        } else {
+            None
+        };
     }
 }

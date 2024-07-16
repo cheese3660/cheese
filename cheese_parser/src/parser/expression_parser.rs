@@ -1,13 +1,13 @@
 use ariadne::{Color, ColorGenerator, Fmt};
 use num_bigint::BigInt;
-use cheese_diagnostics::ErrorCode::{ExpectedArgumentClose, ExpectedClose, ExpectedColon, ExpectedCommaOrClose, ExpectedEnumId, ExpectedExpressionName, ExpectedFieldName, ExpectedIdentifierOrOpeningDiamond, ExpectedPrimary, InvalidCharacterLiteral};
+use cheese_diagnostics::ErrorCode::{ExpectedArgumentClose, ExpectedClose, ExpectedCloseParentheses, ExpectedColon, ExpectedCommaOrClose, ExpectedEnumId, ExpectedExpressionName, ExpectedFieldName, ExpectedIdentifierOrOpeningDiamond, ExpectedName, ExpectedOpenParentheses, ExpectedPrimary, ExpectedSemicolon, InvalidCharacterLiteral};
 use cheese_diagnostics::locating::{File, FileSpan};
 use cheese_diagnostics::ReportLabel;
 use cheese_lexer::TokenType;
-use cheese_lexer::TokenType::{Colon, Comma, Identifier, RightBrace, RightBracket, RightParentheses};
+use cheese_lexer::TokenType::{Colon, Comma, Else, Identifier, LeftParentheses, RightBrace, RightBracket, RightParentheses, Semicolon};
 use cheese_utilities::strings::Escapable;
 use crate::ast::{AstNode, AstNodeData, NodeList, NodePtr, OptionalNode};
-use crate::ast::AstNodeData::{AddressOf, ArrayCall, ArrayLiteral, Break, BuiltinReference, Continue, Dereference, EmptyReturn, EnumLiteral, False, FieldLiteral, FloatLiteral, GenericInstanceReference, ImaginaryLiteral, IntegerLiteral, NamedBreak, NamedExpression, NamedYield, NameReference, Not, ObjectCall, ObjectLiteral, Return, SelfValue, StringLiteral, Subscription, True, TupleCall, TupleLiteral, TypeMemberReference, Typeof, UnaryMinus, UnaryPlus, Underscore, Yield};
+use crate::ast::AstNodeData::{AddressOf, ArrayCall, ArrayLiteral, Block, Break, BuiltinReference, Continue, Dereference, EmptyReturn, EnumLiteral, False, FieldLiteral, FilterTransformation, FloatLiteral, For, GenericInstanceReference, If, ImaginaryLiteral, ImplicitResult, IntegerLiteral, Loop, MapTransformation, NamedBreak, NamedExpression, NamedYield, NameReference, Not, ObjectCall, ObjectLiteral, Return, SelfValue, StringLiteral, Subscription, True, TupleCall, TupleLiteral, TypeMemberReference, Typeof, UnaryMinus, UnaryPlus, Underscore, While, Yield};
 use crate::ast::Operator::Assign;
 use crate::parser::{ExpectedInformation, NO_NOTE, Parser};
 use crate::try_err;
@@ -469,26 +469,301 @@ impl Parser {
         }
     }
     fn parse_expression_block(&mut self) -> NodePtr {
-        todo!()
+        let (children, span) = self.parse_expression_block_list();
+        AstNode::new(span,Block(children))
+    }
+
+    pub(super)
+    fn parse_expression_block_list(&mut self) -> (NodeList,FileSpan) {
+        let block_start = self.peek_ref().span.clone();
+        let mut children = vec![];
+        self.eat_any();
+        while match self.peek_ref().token_type {
+            TokenType::EndOfFile | RightBrace => false,
+            _ => true
+        } {
+            if self.peek_ref().token_type == Semicolon {
+                self.eat_any();
+                continue;
+            }
+            let (child, require_semi) = self.parse_block_statement();
+            match self.peek_ref().token_type {
+                Semicolon => {
+                    self.eat_any();
+                    children.push(child);
+                },
+                RightBrace => {
+                    children.push(AstNode::new(child.span.clone(), ImplicitResult(child)));
+                },
+                _ => {
+                    if require_semi {
+                        children.push(self.unexpected(self.peek(),"a ';' or '}' after a statement that requires a semicolon in a block", ExpectedSemicolon, NO_NOTE, vec![
+                            ReportLabel::new(
+                                child.span.clone(),
+                                "expected after this statement",
+                                None
+                            )
+                        ]))
+                    }
+                    children.push(child);
+                }
+            }
+        }
+        let last_location = self.peek_ref().span.clone();
+        try_err!(self.eat(RightBrace, |_|ExpectedInformation::new(
+            "Expected '}' to end block!",
+            ExpectedClose,
+            NO_NOTE,
+            vec![
+                ReportLabel::new(
+                    block_start.clone(),
+                    "block starts here",
+                    None
+                )
+            ]
+        )),children);
+        (children, block_start.expanded(&last_location))
+    }
+
+    // The bool part is if it requires a semicolon
+    fn parse_block_statement(&mut self) -> (NodePtr, bool) {
+        match self.peek_ref().token_type {
+            TokenType::Let => (self.parse_let(), true),
+            TokenType::Fn => self.parse_local_or_anonymous_function(),
+            TokenType::If => (self.parse_if(), false),
+            TokenType::Match => (self.parse_match(), false),
+            TokenType::For => (self.parse_for(), false),
+            TokenType::While => (self.parse_while(), false),
+            TokenType::Loop => (self.parse_loop(), false),
+
+            _ => (self.parse_expression(), true)
+        }
     }
 
     fn parse_if(&mut self) -> NodePtr {
-        todo!()
+        let location = self.peek_ref().span.clone();
+        self.eat_any();
+        let paren_location = self.peek_ref().span.clone();
+        try_err!(self.eat(
+            LeftParentheses,
+            |_| ExpectedInformation::new(format!("'{}' to begin the condition in an if statement", '('.fg(Color::Green)),
+                                        ExpectedOpenParentheses,
+                                        Some("Cheese requires parentheses around conditions in control structures."),
+                                        vec![
+                                            ReportLabel::new(
+                                                location.clone(),
+                                                format!("{} statement begins here, expected '{}' afterwards", "if".fg(Color::Blue), '('.fg(Color::Green)),
+                                                Some(Color::Blue),
+                                            )
+                                        ],
+            )));
+        let condition = self.parse_expression();
+        let mut capture = None;
+        if self.peek_ref().token_type == Colon {
+            self.eat_any();
+            capture = Some(self.parse_capture(false));
+        }
+        try_err!(self.eat(
+            RightParentheses,
+            |_| ExpectedInformation::new(format!("'{}' to close the condition on an if statement", ')'.fg(Color::Green)),
+                                        ExpectedCloseParentheses,
+                                        Some("Cheese requires parentheses around conditions in control structures."),
+                                        vec![
+                                            ReportLabel::new(
+                                                paren_location.clone(),
+                                                format!("'{}' found here, expected matching '{}'", '('.fg(Color::Green), ')'.fg(Color::Green)),
+                                                Some(Color::Green),
+                                            )
+                                        ],
+            )));
+        let body = self.parse_expression();
+        let mut els = None;
+        if self.peek_ref().token_type == Else {
+            self.eat_any();
+            els = Some(self.parse_expression())
+        }
+        AstNode::new(
+            location.expanded(if let Some(x) = &els {
+                &x.span
+            } else {
+                &body.span
+            }),
+            If {
+                condition,
+                unwrap: capture,
+                body,
+                else_statement: els,
+            },
+        )
     }
 
-    fn parse_match(&mut self) -> NodePtr {
-        todo!()
-    }
 
     fn parse_for(&mut self) -> NodePtr {
-        todo!()
+        let location = self.peek_ref().span.clone();
+        self.eat_any();
+        let open_location = location.clone();
+        try_err!(self.eat(
+            LeftParentheses,
+            |_| ExpectedInformation::new(format!("'{}' to begin the control in a for loop", '('.fg(Color::Green)),
+                 ExpectedOpenParentheses,
+                 Some("Cheese requires parentheses around conditions in control structures."),
+                 vec![
+                     ReportLabel::new(
+                         location.clone(),
+                         format!("{} loop begins here, expected '{}' afterwards", "for".fg(Color::Blue), '('.fg(Color::Green)),
+                         Some(Color::Blue),
+                     )
+                 ],
+            )));
+        let capture = self.parse_capture(false);
+        let index = if self.peek_ref().token_type == Comma {
+            let comma_loc = self.peek_ref().span.clone();
+            self.eat_any();
+            let result = Some(AstNode::new(self.peek_ref().span.clone(),NameReference(self.peek_ref().value.clone())));
+            if self.peek_ref().token_type != Identifier && self.peek_ref().token_type != TokenType::Underscore {
+                Some(self.unexpected(self.peek(),format!("an identifier or '{}' following a comma in a for loop",'_'.fg(Color::Green)),ExpectedName,NO_NOTE,vec![
+                    ReportLabel::new(
+                        location.clone(),
+                        format!("{} loop begins here","for".fg(Color::Blue)),
+                        Some(Color::Blue)
+                    ),
+                    ReportLabel::new(
+                        comma_loc.clone(),
+                        format!("'{}' found here, expected name afterwards",','.fg(Color::Green)),
+                        Some(Color::Green)
+                    )
+                ]))
+            } else {
+                self.eat_any();
+                result
+            }
+        } else {
+            None
+        };
+
+        try_err!(self.eat(
+            Colon,
+            |_| ExpectedInformation::new(
+                format!("'{}' to separate the captures and the iterable in a for loop",':'.fg(Color::Green)),
+                ExpectedColon,
+                NO_NOTE,
+                vec![
+                    ReportLabel::new(
+                        location.clone(),
+                        "for loop begins here",
+                        Some(Color::Blue)
+                    )
+                ]
+
+            )
+        ));
+        let iterable = self.parse_expression();
+        let mut transformations = vec![];
+        while match self.peek_ref().token_type {
+            Colon | TokenType::Question => true,
+            _ => false
+        } {
+            let location = self.peek_ref().span.clone();
+            let is_map = self.peek_ref().token_type == Colon;
+            self.eat_any();
+            let transform = self.parse_expression();
+            transformations.push(AstNode::new(location.expanded(&transform.span),if is_map {
+                MapTransformation(transform)
+            } else {
+                FilterTransformation(transform)
+            }));
+        }
+        try_err!(self.eat(
+            RightParentheses,
+            |_| ExpectedInformation::new(format!("'{}' to close the condition on a for statement", ')'.fg(Color::Green)),
+                 ExpectedCloseParentheses,
+                 Some("Cheese requires parentheses around conditions in control structures."),
+                 vec![
+                     ReportLabel::new(
+                         open_location.clone(),
+                         format!("'{}' found here, expected matching '{}'", '('.fg(Color::Green), ')'.fg(Color::Green)),
+                         Some(Color::Green),
+                     )
+                 ],
+            )));
+        let body = self.parse_expression();
+        let els = if self.peek_ref().token_type == Else {
+            self.eat_any();
+            Some(self.parse_expression())
+        } else {
+            None
+        };
+        AstNode::new(
+            location.expanded(match &els {
+                None => &body.span,
+                Some(els) => &els.span
+            }),
+            For {
+                capture,
+                index_capture: index,
+                iterable,
+                transformations,
+                body,
+                else_statement: els,
+            }
+        )
     }
 
     fn parse_while(&mut self) -> NodePtr {
-        todo!()
+        let location = self.peek_ref().span.clone();
+        self.eat_any();
+        let paren_location = self.peek_ref().span.clone();
+        try_err!(self.eat(
+            LeftParentheses,
+            |_| ExpectedInformation::new(format!("'{}' to begin the condition in a while statement", '('.fg(Color::Green)),
+                 ExpectedOpenParentheses,
+                 Some("Cheese requires parentheses around conditions in control structures."),
+                 vec![
+                     ReportLabel::new(
+                         location.clone(),
+                         format!("{} statement begins here, expected '{}' afterwards", "while".fg(Color::Blue), '('.fg(Color::Green)),
+                         Some(Color::Blue),
+                     )
+                 ],
+            )));
+        let condition = self.parse_expression();
+        try_err!(self.eat(
+            RightParentheses,
+            |_| ExpectedInformation::new(format!("'{}' to close the condition on a while statement", ')'.fg(Color::Green)),
+                 ExpectedCloseParentheses,
+                 Some("Cheese requires parentheses around conditions in control structures."),
+                 vec![
+                     ReportLabel::new(
+                         paren_location.clone(),
+                         format!("'{}' found here, expected matching '{}'", '('.fg(Color::Green), ')'.fg(Color::Green)),
+                         Some(Color::Green),
+                     )
+                 ],
+            )));
+        let body = self.parse_expression();
+        let mut els = None;
+        if self.peek_ref().token_type == Else {
+            self.eat_any();
+            els = Some(self.parse_expression())
+        }
+        AstNode::new(
+            location.expanded(if let Some(x) = &els {
+                &x.span
+            } else {
+                &body.span
+            }),
+            While {
+                condition,
+                body,
+                else_statement: els,
+            },
+        )
     }
 
     fn parse_loop(&mut self) -> NodePtr {
-        todo!()
+        let location = self.peek_ref().span.clone();
+        self.eat_any();
+        let body = self.parse_expression();
+        AstNode::new(location.expanded(&body.span),Loop(body))
     }
 }

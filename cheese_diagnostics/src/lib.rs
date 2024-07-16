@@ -55,6 +55,9 @@ pub enum ErrorCode {
     ExpectedEnumId,
     ExpectedCaptureSpecifier,
     ExpectedCaptureName,
+    ExpectedMatchBody,
+    ExpectedCommaOrArrow,
+    ExpectedOpenBrace,
 
     // Parser advice
     AbleToSimplifyGenerics = PARSER + ADVICE,

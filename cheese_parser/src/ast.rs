@@ -627,7 +627,15 @@ pub enum AstNodeData {
     Argument {
         name: Option<String>,
         argument_type: NodePtr,
+        default: OptionalNode
     },
+
+    GenericArgument {
+        name: String,
+        argument_type: OptionalNode,
+        default: OptionalNode
+    },
+
 
     // project is a special node here (equivalent to crate)
 
@@ -777,7 +785,13 @@ pub enum AstNodeData {
         return_type: NodePtr
     },
 
-    StructureDestructure(NodeDict),
+    StructureDestructure(NodeList),
+
+    StructureDestructureField{
+        name: String,
+        definition: NodePtr
+    },
+
 
     TupleDestructure(NodeList),
 
@@ -1062,13 +1076,37 @@ impl DisplayableTree for AstNodeData {
                     .make_field("flags",format!("{flags}"),KEYWORD_COLOR)
                     .convert_field("type",field_type)
                     .build(),
-            AstNodeData::Argument { name, argument_type } => match name {
-                Some(n) =>
-                    NodeBuilder::new_unnamed()
-                        .make_field("name", n, NAME_COLOR)
-                        .convert_field("type", argument_type)
-                        .build(),
-                Option::None => argument_type.to_node()
+            AstNodeData::Argument { name, argument_type, default } => match name {
+                Some(n) => {
+                    match default {
+                        Some(d) => {
+                            NodeBuilder::new_unnamed()
+                                .make_field("name", n, NAME_COLOR)
+                                .convert_field("type", argument_type)
+                                .convert_field("default", d)
+                                .build()
+                        }
+                        _ => {
+                            NodeBuilder::new_unnamed()
+                                .make_field("name", n, NAME_COLOR)
+                                .convert_field("type", argument_type)
+                                .build()
+                        }
+                    }
+                }
+                _ => {
+                    match default {
+                        Some(d) => {
+                            NodeBuilder::new_unnamed()
+                                .convert_field("type", argument_type)
+                                .convert_field("default", d)
+                                .build()
+                        },
+                        _ => {
+                            argument_type.to_node()
+                        }
+                    }
+                }
             },
             AstNodeData::Structure { is_tuple, name, generic_arguments, flags , children } => {
                 let mut builder = NodeBuilder::new(if *is_tuple { "tuple" } else { "structure" }, TYPE_COLOR);
@@ -1160,8 +1198,8 @@ impl DisplayableTree for AstNodeData {
                     .build(),
             AstNodeData::StructureDestructure(fields) => {
                 let mut builder = NodeBuilder::new("structure destructure", OTHER_COLOR);
-                for (name, store) in fields {
-                    builder.convert_field(name,store);
+                for field in fields {
+                    builder.convert_child(field);
                 }
                 builder.build()
             },
@@ -1323,7 +1361,25 @@ impl DisplayableTree for AstNodeData {
             Import(tree) => NodeBuilder::new("import",KEYWORD_COLOR).convert_inline(tree).build(),
             TypeName(name) => NodeBuilder::new(name,TYPE_COLOR).build(),
             Tuple(children) => NodeBuilder::new("tuple",TYPE_COLOR).add_children(children).build(),
-            InferredArgument(name) => NodeBuilder::new(name, NAME_COLOR).build()
+            InferredArgument(name) => NodeBuilder::new(name, NAME_COLOR).build(),
+            StructureDestructureField { name, definition } => NodeBuilder::new(name, NAME_COLOR).convert_child(definition).build(),
+            GenericArgument { name, argument_type, default } => {
+                let mut builder = NodeBuilder::new_unnamed();
+                builder.make_field("name", name, TYPE_COLOR);
+                match argument_type {
+                    Some(t) => {
+                        builder.convert_field("type", t);
+                    },
+                    _ => {}
+                }
+                match default {
+                    Some(d) => {
+                        builder.convert_field("default", d);
+                    },
+                    _ => {}
+                }
+                builder.build()
+            }
         }
     }
 }
@@ -1643,11 +1699,11 @@ impl AstNodeData {
                     false
                 }
             }
-            Argument { name, argument_type } => {
+            Argument { name, argument_type, default } => {
                 if let Argument {
-                    name: n2, argument_type: a2
+                    name: n2, argument_type: a2, default: d2
                 } = &data {
-                    name == n2 && argument_type.validate(a2)
+                    name == n2 && argument_type.validate(a2) && validate_optional(default, d2)
                 } else {
                     false
                 }
@@ -1816,7 +1872,7 @@ impl AstNodeData {
                     false
                 }
             }
-            StructureDestructure(list) => check_dict!(StructureDestructure, list),
+            StructureDestructure(list) => check_list!(StructureDestructure, list),
             TupleDestructure(list) => check_list!(TupleDestructure, list),
             ArrayDestructure(list) => check_list!(ArrayDestructure, list),
             SliceDestructure(list) => check_list!(SliceDestructure, list),
@@ -1989,7 +2045,21 @@ impl AstNodeData {
             }
             TypeName(name) => check!(TypeName, name),
             Tuple(children) => check_list!(Tuple, children),
-            InferredArgument(name) => check!(InferredArgument, name)
+            InferredArgument(name) => check!(InferredArgument, name),
+            StructureDestructureField { name, definition } => {
+                if let StructureDestructureField {name: n2, definition: d2} = &data {
+                    name == n2 && definition.validate(d2)
+                } else {
+                    false
+                }
+            }
+            GenericArgument { name, argument_type, default } => {
+                if let GenericArgument {name: n2, argument_type: t2, default: d2} = &data {
+                    name == n2 && validate_optional(argument_type, t2) && validate_optional(default,d2)
+                } else {
+                    false
+                }
+            }
         };
         if !result {
             println!("failed to validate!\nexpected:\n{self}\n\ngot:\n{node}\n\n")
@@ -2160,7 +2230,7 @@ validator_set!(
     DestructuringMatchStructure(NodeDict),
     DestructuringMatchTuple(NodeList),
     DestructuringMatchArray(NodeList),
-    StructureDestructure(NodeDict),
+    StructureDestructure(NodeList),
     TupleDestructure(NodeList),
     ArrayDestructure(NodeList),
     SliceDestructure(NodeList),
@@ -2378,10 +2448,11 @@ validator!(Field {
     name: Option<String>,
     field_type: NodePtr,
 });
-validator!(Argument {
-    name: Option<String>,
-    argument_type: NodePtr,
-});
+validator!(Argument{
+        name: Option<String>,
+        argument_type: NodePtr,
+        default: OptionalNode
+    });
 validator!(FunctionPrototype {
     flags: DeclarationFlags,
     name: String,
@@ -2557,6 +2628,17 @@ validator!(ImportTree {
 name: String,
 children: NodeList,
 });
+
+validator!(   StructureDestructureField{
+        name: String,
+        definition: NodePtr
+    });
+
+validator!(GenericArgument {
+        name: String,
+        argument_type: OptionalNode,
+        default: OptionalNode
+    });
 
 pub fn v_program(children: NodeList) -> NodePtr {
     v_module(children)

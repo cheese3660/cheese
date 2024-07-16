@@ -15,7 +15,19 @@ impl Parser {
 
     pub(super)
     fn parse_anonymous_function(&mut self) -> NodePtr {
+        todo!()
+    }
 
+    pub(super)
+    fn parse_top_level_function(&mut self, start_location: FileSpan, flags: DeclarationFlags) -> NodePtr {
+        todo!()
+    }
+
+
+    // The bool on the return is if it's an anonymous function
+    pub(super)
+    fn parse_local_or_anonymous_function(&mut self) -> (NodePtr, bool) {
+        todo!()
     }
 
     fn parse_function_argument(&mut self) -> NodePtr {

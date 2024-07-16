@@ -142,7 +142,7 @@ impl Parser {
             }
         }
     }
-    fn parse_generic_type_argument(&mut self) -> NodePtr {
+    pub(super) fn parse_generic_type_argument(&mut self) -> NodePtr {
         self.parse_type_secondary(Self::parse_generic_arg_primary)
     }
 
